@@ -33,13 +33,9 @@ export interface GameState {
   isGameOver: boolean;
   isGameWon: boolean;
   withdrawn: boolean;
-  lifelines: {
-    fiftyFifty: boolean;
-    askAudience: boolean;
-    expertCall: boolean;
-  };
   revivedWithCoins?: boolean;
   revivedWithAd?: boolean;
+  difficulty?: Difficulty;
 }
 
 export interface LanguageOption {

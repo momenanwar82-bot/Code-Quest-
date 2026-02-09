@@ -1,25 +1,39 @@
 
-import { LanguageOption, LeaderboardEntry } from './types';
+import { LanguageOption, LeaderboardEntry, Difficulty } from './types';
 
 export const COINS_KEY = 'code_quest_total_coins_v1';
 export const LEADERBOARD_KEY = 'code_quest_leaderboard_v5';
 export const DAILY_CHALLENGE_KEY = 'code_quest_daily_challenge_date';
 export const DAILY_BONUS_AMOUNT = 25000;
 
-export const LANGUAGES: {id: string, name: string, description: string}[] = [
-  { id: 'javascript', name: 'JAVASCRIPT', description: 'لغة الويب الأكثر شهرة وقوة' },
-  { id: 'python', name: 'PYTHON', description: 'لغة الذكاء الاصطناعي وعلم البيانات' },
-  { id: 'java', name: 'JAVA', description: 'لغة تطبيقات الأندرويد والأنظمة' },
-  { id: 'cpp', name: 'C++', description: 'لغة الأنظمة والألعاب عالية الأداء' },
-  { id: 'typescript', name: 'TYPESCRIPT', description: 'النسخة المطورة والآمنة من جافا سكريبت' },
-  { id: 'php', name: 'PHP', description: 'لغة تطوير المواقع وقواعد البيانات' },
+export const LANGUAGES: {id: string, name: string}[] = [
+  { id: 'javascript', name: 'JAVASCRIPT' },
+  { id: 'python', name: 'PYTHON' },
+  { id: 'java', name: 'JAVA' },
+  { id: 'cpp', name: 'C++' },
+  { id: 'typescript', name: 'TYPESCRIPT' },
+  { id: 'php', name: 'PHP' },
 ];
 
-export const PRIZE_LADDER = [
-  '100', '200', '300', '500', '1,000',
-  '2,000', '4,000', '8,000', '16,000', '32,000',
-  '64,000', '125,000', '250,000', '500,000', '1,000,000'
-];
+export const PRIZE_LADDERS: Record<Difficulty, string[]> = {
+  [Difficulty.Beginner]: [
+    '10', '20', '30', '50', '80', '120', '180', '250', '350', '450', '600', '700', '800', '900', '1,000'
+  ],
+  [Difficulty.Intermediate]: [
+    '50', '100', '200', '400', '800', '1,500', '3,000', '5,000', '8,000', '12,000', '18,000', '25,000', '35,000', '45,000', '50,000'
+  ],
+  [Difficulty.Advanced]: [
+    '100', '200', '500', '1,000', '2,000', '5,000', '10,000', '20,000', '35,000', '50,000', '75,000', '100,000', '150,000', '200,000', '250,000'
+  ],
+  [Difficulty.Expert]: [
+    '200', '500', '1,000', '2,500', '5,000', '10,000', '25,000', '50,000', '75,000', '100,000', '150,000', '200,000', '300,000', '400,000', '500,000'
+  ],
+  [Difficulty.Master]: [
+    '100', '200', '300', '500', '1,000', '2,000', '4,000', '8,000', '16,000', '32,000', '64,000', '125,000', '250,000', '500,000', '1,000,000'
+  ]
+};
+
+export const PRIZE_LADDER = PRIZE_LADDERS[Difficulty.Master];
 
 export const INITIAL_MOCK_LEADERBOARD: LeaderboardEntry[] = [
   { name: 'احمد_المبرمج', score: 1000000, language: 'Python', date: '2024-05-10', scoreFormatted: '1,000,000' },
