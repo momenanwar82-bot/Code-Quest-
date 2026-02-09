@@ -1,23 +1,23 @@
+
 {
-  "name": "codequest.apk",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
+  "name": "code-quest-millionaire",
+  "version": "1.0.0",
+  "description": "High-stakes programming quiz game",
+  "main": "index.tsx",
   "dependencies": {
-    "lucide-react": "^0.562.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
     "@google/genai": "^1.34.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "firebase": "^10.8.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "@capacitor/cli": "^6.0.0"
+  },
+  "scripts": {
+    "build": "echo 'Web build is ready'",
+    "sync": "npx cap sync android"
   }
 }

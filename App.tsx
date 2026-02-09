@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Question, Difficulty, LeaderboardEntry } from './types';
 import { LANGUAGES, PRIZE_LADDERS, COINS_KEY, DAILY_CHALLENGE_KEY, DAILY_BONUS_AMOUNT, LEADERBOARD_KEY, INITIAL_MOCK_LEADERBOARD, FAKE_NAMES } from './constants';
 import { generateProgrammingQuestion } from './services/geminiService';
 import { AdService } from './services/adService';
+import { saveScoreToFirestore } from './firebaseConfig';
 import { 
   Terminal, Coins, Languages, 
   ShieldCheck, XCircle, CheckCircle2, 
@@ -244,6 +246,10 @@ const App: React.FC = () => {
 
   const saveToLeaderboard = (score: number, lang: string) => {
     if (score <= 0) return;
+
+    // حفظ في Firestore سحابياً
+    saveScoreToFirestore(playerName, score, lang);
+
     setLeaderboard(prev => {
       const existingIdx = prev.findIndex(e => e.name === playerName);
       let updated = [...prev];
