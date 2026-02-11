@@ -17,27 +17,37 @@ export async function generateProgrammingQuestion(
   uiLang: 'ar' | 'en' = 'ar',
   baseDifficulty: Difficulty = Difficulty.Intermediate
 ): Promise<Question> {
-  // Fix: Create a new GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const difficultyLabel = DIFFICULTY_LABELS[baseDifficulty];
   
-  const prompt = `Generate a unique, high-quality multiple-choice programming question for ${language}.
-  Selected User Level: ${difficultyLabel}
-  Current Progress: Question ${questionNum + 1} of 15.
-  Stage Complexity: ${stage} of 5.
-  Provide a code snippet if relevant.
-  The text of the question and explanation MUST be in ${uiLang === 'ar' ? 'Arabic' : 'English'}. 
-  Code should stay in English format.
-  Ensure the options are challenging and the correct answer is indisputable.
-  Return only JSON.`;
+  // تحديث البرومبت لفرض نمط "Quick Snippets"
+  const prompt = `Generate a high-stakes "Quick Snippet" programming question for ${language}.
+  User Level: ${difficultyLabel}
+  Stage: ${stage}
+  
+  CRITICAL RULES:
+  1. STYLE: "Quick Snippet" - The logic must be solvable in under 10 seconds.
+  2. CODE LENGTH: If a code snippet is provided, it MUST be 3 to 4 lines MAX.
+  3. READABILITY: Use clear, concise code that fits perfectly on a mobile screen.
+  4. QUESTION TEXT: Keep the question very brief (1 short sentence).
+  5. LANGUAGE: Question text and explanation MUST be in ${uiLang === 'ar' ? 'Arabic' : 'English'}.
+  6. CODE: Programming code MUST stay in English.
+  
+  Example Style:
+  let a = [1, 2];
+  let b = a;
+  b.push(3);
+  console.log(a.length);
+  
+  Return only JSON format.`;
 
-  // Fix: Using gemini-3-pro-preview for complex programming tasks as per guidelines.
+  const budget = stage <= 1 ? 500 : 2000;
+
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: prompt,
     config: {
-      // Fix: Adding thinkingBudget for better reasoning in code generation.
-      thinkingConfig: { thinkingBudget: 4000 },
+      thinkingConfig: { thinkingBudget: budget },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -59,6 +69,5 @@ export async function generateProgrammingQuestion(
     }
   });
 
-  // Fix: Correctly accessing the text property (not calling as a function) and trimming.
   return JSON.parse(response.text.trim()) as Question;
 }
