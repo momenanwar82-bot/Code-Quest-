@@ -71,6 +71,7 @@ const translations = {
     minStakesNote: "الحد الأدنى 200 قطعة",
     startFriendChallenge: "بدء وإرسال دعوة",
     waitingForFriend: "في انتظار انضمام الصديق...",
+    preparingMatch: "جاري تجهيز 10 أسئلة موحدة للتحدي...",
     shareCodeNote: "شارك الكود الخاص بك مع صديقك للدخول",
     comingSoon: "نظام الربط قيد التطوير!",
     stake: "الرهان",
@@ -142,12 +143,12 @@ const translations = {
     decline: "رفض",
     battleArena: "ساحة التحدي المباشر",
     opponent: "الخصم",
-    waitingTurn: "انتظر دور الخصم...",
+    waitingTurn: "الخصم يجيب الآن...",
     yourTurn: "دورك الآن!",
     turnCount: "الضربة",
     draw: "تعادل!",
     drawSub: "لقد كنتما متساويين في القوة واستعدتما الرهان!",
-    wonAgainstFriend: "لقد هزمت صديقك وسحبت مبلغ الرهان!",
+    wonAgainstFriend: "لقد هزمت صديقك وسحبت الرهان!",
     lostAgainstFriend: "لقد فاز صديقك هذه المرة، حظاً أوفر!",
     payoutWinner: "مبروك! ربحت {amount} كوينز",
     langDesc: {
@@ -183,6 +184,7 @@ const translations = {
     minStakesNote: "Minimum 200 coins",
     startFriendChallenge: "Start & Send Invite",
     waitingForFriend: "Waiting for friend to join...",
+    preparingMatch: "Preparing 10 unified questions for battle...",
     shareCodeNote: "Share your code with your friend to enter",
     comingSoon: "Networking system under development!",
     stake: "Stake",
@@ -254,7 +256,7 @@ const translations = {
     decline: "Decline",
     battleArena: "Live Battle Arena",
     opponent: "Opponent",
-    waitingTurn: "Waiting for opponent's turn...",
+    waitingTurn: "Opponent is answering...",
     yourTurn: "It's your turn!",
     turnCount: "Strike",
     draw: "Draw!",
@@ -337,7 +339,7 @@ const UserAvatar = ({ name, size = "w-14 h-14", textClassName = "text-xl" }: { n
   );
 };
 
-// Profile Page Component (Moved outside to follow best practices)
+// Profile Page Component
 const ProfilePage = ({ name, playerName, leaderboard, playerCode, totalCoins, t, logout, setViewedProfile }: any) => {
   const isMe = name === playerName;
   const userStats = leaderboard.find((e: any) => e.name === name) || { score: 0, scoreFormatted: '0', language: 'N/A' };
@@ -407,6 +409,7 @@ const App: React.FC = () => {
   const [friendProgress, setFriendProgress] = useState({ me: 0, him: 0 });
   const [isMatchFinished, setIsMatchFinished] = useState(false);
   const [matchResultState, setMatchResultState] = useState<'win' | 'loss' | 'draw' | null>(null);
+  const [isPreparingQuestions, setIsPreparingQuestions] = useState(false);
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -429,7 +432,6 @@ const App: React.FC = () => {
     timeLeft: QUESTION_TIME,
     isGameOver: false,
     isGameWon: false,
-    // Fixed: Removed 'boolean =' which incorrectly used type as value
     withdrawn: false,
     revivedWithCoins: false,
     revivedWithAd: false
@@ -458,7 +460,9 @@ const App: React.FC = () => {
   const timerRef = useRef<number | null>(null);
   const aiTimerRef = useRef<number | null>(null);
 
-  // Hooks (MUST BE AT THE TOP)
+  // Constants for turns
+  const isMultiplayer = !!(gameMode === 'friend' && multiplayerData);
+  const isMyTurn = isMultiplayer ? (multiplayerData.currentTurn === playerCode) : true;
 
   // Monitor Auth State
   useEffect(() => {
@@ -501,52 +505,82 @@ const App: React.FC = () => {
   useEffect(() => {
     if (playerCode !== '000000' && playerName) {
       const myChallengeRef = ref(database, `challenges/${playerCode}`);
-      const unsub = onValue(myChallengeRef, (snapshot) => {
+      const unsub = onValue(myChallengeRef, async (snapshot) => {
         const data = snapshot.val();
+        
+        // CASE 1: Incoming Challenge Notification
         if (data && (data.status === 'setup' || data.status === 'lobby') && data.hostCode !== playerCode) {
           setIncomingChallenge(data);
         } else {
           setIncomingChallenge(null);
         }
+
+        // CASE 2: Multiplayer Sync
         if (data && data.status === 'active' && !isMatchFinished) {
            setMultiplayerData(data);
            setActiveChallengePath(playerCode);
+           
            if (gameMode !== 'friend') {
              setGameMode('friend');
              initFriendGameState(data);
            }
+           
            const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
            setFriendProgress({
              me: myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0),
              him: myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0)
            });
-           if (data.currentQuestion) {
-             setCurrentQuestion(data.currentQuestion);
-             setIsLoading(false);
-             const itsMyTurn = data.currentTurn === playerCode;
-             if (itsMyTurn && selectedOption === null) {
-               startTimer();
-             } else if (!itsMyTurn) {
-               if (timerRef.current) window.clearInterval(timerRef.current);
+
+           // Question Sync: Both read from the 'questions' array stored in RTDB
+           if (data.questions && data.totalTurns <= MAX_TURNS) {
+             const turnIdx = data.totalTurns - 1;
+             const q = data.questions[turnIdx];
+             if (q) {
+               setCurrentQuestion(q);
+               setIsLoading(false);
+               const itsMyTurn = data.currentTurn === playerCode;
+               if (itsMyTurn && selectedOption === null) {
+                 startTimer();
+               } else if (!itsMyTurn) {
+                 if (timerRef.current) window.clearInterval(timerRef.current);
+               }
              }
            }
+
            if (data.totalTurns > MAX_TURNS) {
              handleMultiplayerEnd(data);
+           }
+
+           // Host logic: Pre-generate questions if missing
+           if (myRole === 'host' && !data.questions && !isPreparingQuestions) {
+             prepareMatchQuestions(data);
            }
         }
       });
       return () => unsub();
     }
-  }, [playerCode, playerName, gameMode, selectedOption, isMatchFinished]);
+  }, [playerCode, playerName, gameMode, selectedOption, isMatchFinished, isPreparingQuestions]);
 
-  const isMultiplayer = !!(gameMode === 'friend' && multiplayerData);
-  const isMyTurn = isMultiplayer ? (multiplayerData.currentTurn === playerCode) : true;
-
-  useEffect(() => {
-    if (isMultiplayer && isMyTurn && !multiplayerData?.currentQuestion && !isLoading && !isMatchFinished && playerName) {
-      fetchQuestion(multiplayerData.selectedLanguage, multiplayerData.totalTurns, Math.ceil(multiplayerData.totalTurns / 2), Difficulty.Intermediate);
+  const prepareMatchQuestions = async (data: any) => {
+    setIsPreparingQuestions(true);
+    setIsLoading(true);
+    try {
+      const qs: Question[] = [];
+      // Generate 10 questions in parallel for speed
+      const promises = Array.from({ length: 10 }).map((_, i) => 
+        generateProgrammingQuestion(data.selectedLanguage, Math.ceil((i+1)/2), i, uiLang, Difficulty.Intermediate)
+      );
+      const results = await Promise.all(promises);
+      await update(ref(database, `challenges/${playerCode}`), {
+        questions: results
+      });
+    } catch (e) {
+      console.error("Match preparation failed", e);
+    } finally {
+      setIsPreparingQuestions(false);
+      setIsLoading(false);
     }
-  }, [isMultiplayer, isMyTurn, multiplayerData?.currentQuestion, isMatchFinished, playerName]);
+  };
 
   const initFriendGameState = (data: any) => {
     setIsMatchFinished(false);
@@ -566,9 +600,11 @@ const App: React.FC = () => {
     if (isMatchFinished) return;
     setIsMatchFinished(true);
     if (timerRef.current) window.clearInterval(timerRef.current);
+    
     const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
     const myScore = myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0);
     const opponentScore = myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0);
+
     if (myScore > opponentScore) {
        setMatchResultState('win');
        setMascotMood('victory');
@@ -583,7 +619,10 @@ const App: React.FC = () => {
        setMascotMood('normal');
        await updateCoins(data.betAmount);
     }
-    setTimeout(() => { if (playerCode !== '000000') remove(ref(database, `challenges/${playerCode}`)); }, 5000);
+    
+    setTimeout(() => {
+      if (playerCode !== '000000') remove(ref(database, `challenges/${playerCode}`));
+    }, 5000);
   };
 
   const loadLeaderboard = () => {
@@ -608,8 +647,14 @@ const App: React.FC = () => {
         if (!formUsername.trim()) throw new Error(uiLang === 'ar' ? "يرجى إدخال اسم مستخدم" : "Please enter a username");
         const cred = await createUserWithEmailAndPassword(auth, formEmail, formPassword);
         await updateProfile(cred.user, { displayName: formUsername.trim() });
-      } else { await signInWithEmailAndPassword(auth, formEmail, formPassword); }
-    } catch (e: any) { setAuthError(e.message); } finally { setIsLoading(false); }
+      } else {
+        await signInWithEmailAndPassword(auth, formEmail, formPassword);
+      }
+    } catch (e: any) {
+      setAuthError(e.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -626,8 +671,14 @@ const App: React.FC = () => {
     setSearchResult(null);
     const result = await searchUserByCode(searchQuery);
     setIsSearching(false);
-    if (result) { setMascotMood('normal'); setSearchResult(result); }
-    else { setMascotMood('upset'); setTimeout(() => setMascotMood('normal'), 3000); alert(t.userNotFound); }
+    if (result) {
+      setMascotMood('normal');
+      setSearchResult(result);
+    } else {
+      setMascotMood('upset');
+      setTimeout(() => setMascotMood('normal'), 3000);
+      alert(t.userNotFound);
+    }
   };
 
   const toggleLanguage = () => {
@@ -649,21 +700,26 @@ const App: React.FC = () => {
     try {
       const activeDifficulty = difficulty || gameState.difficulty || Difficulty.Intermediate;
       const question = await generateProgrammingQuestion(lang, stage, qIdx, uiLang, activeDifficulty);
-      if (gameMode === 'friend' && activeChallengePath) {
-        await update(ref(database, `challenges/${activeChallengePath}`), { currentQuestion: question });
-      }
       setCurrentQuestion(question);
       setGameState(prev => ({ ...prev, timeLeft: QUESTION_TIME }));
       startTimer();
       if (gameMode === 'battle') simulateAiMove();
-    } catch (error) { setTimeout(() => fetchQuestion(lang, qIdx, stage, difficulty), 2000); } finally { setIsLoading(false); }
+    } catch (error) {
+      setTimeout(() => fetchQuestion(lang, qIdx, stage, difficulty), 2000);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const startTimer = () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = window.setInterval(() => {
       setGameState(prev => {
-        if (prev.timeLeft <= 0) { window.clearInterval(timerRef.current!); triggerGameOverOrRevive(); return { ...prev, timeLeft: 0 }; }
+        if (prev.timeLeft <= 0) {
+          window.clearInterval(timerRef.current!);
+          triggerGameOverOrRevive();
+          return { ...prev, timeLeft: 0 };
+        }
         return { ...prev, timeLeft: prev.timeLeft - 1 };
       });
     }, 1000);
@@ -672,9 +728,15 @@ const App: React.FC = () => {
   const triggerGameOverOrRevive = () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
     if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
-    if (gameMode === 'friend') { handleMultiplayerTurnResult(false); }
-    else if (!gameState.revivedWithCoins && !gameState.revivedWithAd && gameMode !== 'battle') { setMascotMood('upset'); setShowRevive(true); }
-    else { handleGameOver(); }
+    
+    if (gameMode === 'friend') {
+      handleMultiplayerTurnResult(false);
+    } else if (!gameState.revivedWithCoins && !gameState.revivedWithAd && gameMode !== 'battle') {
+      setMascotMood('upset');
+      setShowRevive(true);
+    } else {
+      handleGameOver();
+    }
   };
 
   const handleGameOver = async () => {
@@ -698,7 +760,10 @@ const App: React.FC = () => {
 
   const handleReviveWithAd = async () => {
     const success = await AdService.showRewardedAd();
-    if (success) { setGameState(prev => ({ ...prev, revivedWithAd: true })); continueGame(); }
+    if (success) {
+      setGameState(prev => ({ ...prev, revivedWithAd: true }));
+      continueGame();
+    }
   };
 
   const continueGame = () => {
@@ -727,14 +792,21 @@ const App: React.FC = () => {
 
   const handleMultiplayerTurnResult = async (isCorrect: boolean) => {
     if (!activeChallengePath || !multiplayerData) return;
+    
     const isHost = multiplayerData.hostCode === playerCode;
     const opponentCode = isHost ? multiplayerData.opponentCode : multiplayerData.hostCode;
     const currentTurnCount = multiplayerData.totalTurns;
-    const updates: any = { currentTurn: opponentCode, totalTurns: currentTurnCount + 1, currentQuestion: null };
+
+    const updates: any = {
+      currentTurn: opponentCode,
+      totalTurns: currentTurnCount + 1
+    };
+
     if (isCorrect) {
       if (isHost) updates.hostProgress = (multiplayerData.hostProgress || 0) + 1;
       else updates.opponentProgress = (multiplayerData.opponentProgress || 0) + 1;
     }
+
     await update(ref(database, `challenges/${activeChallengePath}`), updates);
     setSelectedOption(null);
     setCurrentQuestion(null);
@@ -745,19 +817,29 @@ const App: React.FC = () => {
     if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
     setSelectedOption(null);
     setIsLoading(true);
+
     if (gameMode === 'battle') {
       const newScore = battleProgress.user + 1;
       setBattleProgress(prev => ({ ...prev, user: newScore }));
-      if (newScore >= BATTLE_TARGET) { setGameState(prev => ({ ...prev, isGameWon: true })); setMascotMood('victory'); await updateCoins(BATTLE_WIN_REWARD); }
-      else fetchQuestion('mixed', gameState.currentQuestionIndex + 1, 3);
+      if (newScore >= BATTLE_TARGET) {
+        setGameState(prev => ({ ...prev, isGameWon: true }));
+        setMascotMood('victory');
+        await updateCoins(BATTLE_WIN_REWARD);
+      } else fetchQuestion('mixed', gameState.currentQuestionIndex + 1, 3);
     } else if (gameMode === 'daily') {
-      setGameState(prev => ({ ...prev, isGameWon: true })); setMascotMood('victory'); await updateCoins(DAILY_QUEST_REWARD);
-      setIsDailyCompleted(true); localStorage.setItem(LAST_DAILY_COMPLETED_KEY, new Date().toDateString());
+      setGameState(prev => ({ ...prev, isGameWon: true }));
+      setMascotMood('victory');
+      await updateCoins(DAILY_QUEST_REWARD);
+      setIsDailyCompleted(true);
+      localStorage.setItem(LAST_DAILY_COMPLETED_KEY, new Date().toDateString());
     } else {
       const ladder = PRIZE_LADDERS[gameState.difficulty || Difficulty.Intermediate];
       const nextIdx = gameState.currentQuestionIndex + 1;
-      if (nextIdx >= 15) { setGameState(prev => ({ ...prev, isGameWon: true })); setMascotMood('victory'); await updateCoins(parseInt(ladder[14].replace(/,/g, ''))); }
-      else {
+      if (nextIdx >= 15) {
+        setGameState(prev => ({ ...prev, isGameWon: true }));
+        setMascotMood('victory');
+        await updateCoins(parseInt(ladder[14].replace(/,/g, '')));
+      } else {
         setGameState(prev => ({ ...prev, currentQuestionIndex: nextIdx, score: ladder[gameState.currentQuestionIndex] }));
         await fetchQuestion(gameState.currentLanguage!, nextIdx, Math.floor(nextIdx / 3) + 1, gameState.difficulty);
       }
@@ -769,28 +851,35 @@ const App: React.FC = () => {
     setSelectedOption(idx);
     if (timerRef.current) window.clearInterval(timerRef.current);
     const isCorrect = idx === currentQuestion?.correctAnswerIndex;
-    setTimeout(() => { if (gameMode === 'friend') { handleMultiplayerTurnResult(isCorrect); } else { if (isCorrect) proceedToNextStage(); else triggerGameOverOrRevive(); } }, 1500);
+    
+    setTimeout(() => { 
+      if (gameMode === 'friend') {
+        handleMultiplayerTurnResult(isCorrect);
+      } else {
+        if (isCorrect) proceedToNextStage(); 
+        else triggerGameOverOrRevive(); 
+      }
+    }, 1500);
   };
 
-  const handleRetry = async () => {
-    setGameState(prev => ({ ...prev, isGameOver: false }));
-    if (gameMode === 'classic') await startNewGame(gameState.currentLanguage!, gameState.difficulty!);
-    else if (gameMode === 'battle') await startAIBattle();
-    else if (gameMode === 'daily') await startDailyQuest(Difficulty.Master);
+  const handleLanguageClick = (langId: string) => {
+    setSelectedLangForDifficulty(langId);
   };
-
-  const handleLanguageClick = (langId: string) => { setSelectedLangForDifficulty(langId); };
 
   const startDailyQuest = async (difficulty: Difficulty) => {
     if (isDailyCompleted) return alert(t.dailyLimit);
-    setGameMode('daily'); setMascotMood('normal');
+    setGameMode('daily');
+    setMascotMood('normal');
     setGameState({ currentLanguage: 'Daily Master Challenge', currentStage: 1, currentQuestionIndex: 0, score: '0', isGameOver: false, isGameWon: false, withdrawn: false, timeLeft: QUESTION_TIME, revivedWithCoins: false, revivedWithAd: false, difficulty });
     await fetchQuestion('random', 0, 5, difficulty);
   };
 
   const startAIBattle = async () => {
     if (totalCoins < BATTLE_STAKE) return alert(t.insufficientBalance);
-    await updateCoins(-BATTLE_STAKE); setGameMode('battle'); setMascotMood('normal'); setBattleProgress({ user: 0, ai: 0 });
+    await updateCoins(-BATTLE_STAKE);
+    setGameMode('battle');
+    setMascotMood('normal');
+    setBattleProgress({ user: 0, ai: 0 });
     setGameState({ currentLanguage: t.mixed, currentStage: 1, currentQuestionIndex: 0, score: '0', isGameOver: false, isGameWon: false, withdrawn: false, timeLeft: QUESTION_TIME, revivedWithCoins: false, revivedWithAd: false, difficulty: Difficulty.Advanced });
     await fetchQuestion('javascript', 0, 1, Difficulty.Advanced);
   };
@@ -798,32 +887,61 @@ const App: React.FC = () => {
   const handleStartFriendChallenge = async () => {
     if (totalCoins < friendStakes) return alert(t.insufficientBalance);
     await updateCoins(-friendStakes);
+    
     if (searchResult) {
       const challengeRef = ref(database, `challenges/${searchResult.userCode}`);
-      update(challengeRef, { hostName: playerName, hostCode: playerCode, opponentName: searchResult.name, opponentCode: searchResult.userCode, selectedLanguage: friendLang, betAmount: friendStakes, status: 'lobby', updatedAt: Date.now() });
+      update(challengeRef, { 
+        hostName: playerName,
+        hostCode: playerCode,
+        opponentName: searchResult.name,
+        opponentCode: searchResult.userCode,
+        selectedLanguage: friendLang,
+        betAmount: friendStakes,
+        status: 'lobby',
+        updatedAt: Date.now()
+      });
       setActiveChallengePath(searchResult.userCode);
     }
-    setShowFriendSetup(false); setGameMode('friend'); setMascotMood('normal');
+
+    setShowFriendSetup(false);
+    setGameMode('friend');
+    setMascotMood('normal');
   };
 
   const handleAcceptChallenge = async () => {
     if (!incomingChallenge) return;
     if (totalCoins < incomingChallenge.betAmount) return alert(t.insufficientBalance);
+    
     await updateCoins(-incomingChallenge.betAmount);
+    
     const challengeRef = ref(database, `challenges/${playerCode}`);
-    await update(challengeRef, { status: 'active', hostProgress: 0, opponentProgress: 0, totalTurns: 1, currentTurn: incomingChallenge.hostCode });
-    setIncomingChallenge(null); setGameMode('friend'); setActiveChallengePath(playerCode); setMascotMood('normal');
+    await update(challengeRef, { 
+      status: 'active', 
+      hostProgress: 0, 
+      opponentProgress: 0,
+      totalTurns: 1,
+      currentTurn: incomingChallenge.hostCode 
+    });
+    
+    setIncomingChallenge(null);
+    setGameMode('friend');
+    setActiveChallengePath(playerCode);
+    setMascotMood('normal');
   };
 
   const handleDeclineChallenge = async () => {
     if (!incomingChallenge) return;
     const challengeRef = ref(database, `challenges/${playerCode}`);
-    await remove(challengeRef); setIncomingChallenge(null);
+    await remove(challengeRef);
+    setIncomingChallenge(null);
   };
 
   const startNewGame = async (lang: string, difficulty: Difficulty) => {
     if (totalCoins < ENTRY_FEE) return alert(t.insufficientBalance);
-    await updateCoins(-ENTRY_FEE); setSelectedLangForDifficulty(null); setGameMode('classic'); setMascotMood('normal');
+    await updateCoins(-ENTRY_FEE);
+    setSelectedLangForDifficulty(null);
+    setGameMode('classic');
+    setMascotMood('normal');
     setGameState({ currentLanguage: lang, currentStage: 1, currentQuestionIndex: 0, score: '0', isGameOver: false, isGameWon: false, withdrawn: false, timeLeft: QUESTION_TIME, revivedWithCoins: false, revivedWithAd: false, difficulty });
     await fetchQuestion(lang, 0, 1, difficulty);
   };
@@ -944,7 +1062,7 @@ const App: React.FC = () => {
               ))}
             </div>
           </div>
-        </main>
+        </header>
         {incomingChallenge && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div className="bg-[#0a0f1e] border border-indigo-500/30 rounded-[3rem] p-8 w-full max-sm shadow-[0_0_80px_rgba(99,102,241,0.2)] text-center animate-in zoom-in-95 duration-300">
@@ -1009,8 +1127,19 @@ const App: React.FC = () => {
             <div className="bg-[#0a0f1e] border-2 border-white/5 px-4 py-3 rounded-xl flex items-center gap-2"><Timer className={`w-5 h-5 ${gameState.timeLeft < 7 ? 'text-red-500 animate-pulse' : 'text-blue-500'}`} /><span className="text-2xl font-mono font-black">{gameState.timeLeft}</span></div>
           </header>
           <div className="bg-[#0a0f1e] border border-white/5 rounded-[2.5rem] p-6 md:p-10 shadow-2xl min-h-[420px] flex flex-col justify-center relative overflow-hidden">
-            {isLoading ? (<Loader2 className="w-14 h-14 text-blue-500 animate-spin mx-auto" />) : !isMyTurn ? (
-              <div className="flex flex-col items-center gap-8 py-10"><Hourglass className="w-24 h-24 text-blue-500 animate-bounce" /><div className="text-center space-y-2"><h2 className="text-3xl font-black">{t.waitingTurn}</h2></div></div>
+            {isLoading || isPreparingQuestions ? (
+               <div className="text-center space-y-4">
+                  <Loader2 className="w-14 h-14 text-blue-500 animate-spin mx-auto" />
+                  {isPreparingQuestions && <p className="text-blue-400 font-black animate-pulse">{t.preparingMatch}</p>}
+               </div>
+            ) : !isMyTurn ? (
+              <div className="flex flex-col items-center gap-8 py-10">
+                <Hourglass className="w-24 h-24 text-blue-500 animate-bounce" />
+                <div className="text-center space-y-2">
+                  <h2 className="text-3xl font-black text-blue-400">{t.waitingTurn}</h2>
+                  <p className="text-slate-500 font-bold">{t.turnCount}: {multiplayerData.totalTurns} / {MAX_TURNS}</p>
+                </div>
+              </div>
             ) : currentQuestion ? (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-500">
                 <h2 className={`text-xl md:text-2xl font-black leading-tight ${uiLang === 'ar' ? 'text-right' : 'text-left'}`}>{currentQuestion.text}</h2>
