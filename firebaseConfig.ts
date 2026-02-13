@@ -23,19 +23,24 @@ import {
   onAuthStateChanged,
   signOut
 } from "firebase/auth";
+import { getDatabase } from "firebase/database";
 
+// الإعدادات المحدثة تشمل Realtime Database
 const firebaseConfig = {
-  apiKey: "AIzaSyDENsnhvPm9jZAM3BF13sFbtVVOG_csOuE",
-  authDomain: "studio-4348673780-9ee55.firebaseapp.com",
-  projectId: "studio-4348673780-9ee55",
-  storageBucket: "studio-4348673780-9ee55.firebasestorage.app",
-  messagingSenderId: "348459204596",
-  appId: "1:348459204596:web:4cdb897361bdb9288c03a1"
+  apiKey: "AIzaSyDIiYHLpFDQ3CbchLbI66RuIttJPW0n5Yk",
+  authDomain: "code-quest-a3f47.firebaseapp.com",
+  projectId: "code-quest-a3f47",
+  storageBucket: "code-quest-a3f47.firebasestorage.app",
+  messagingSenderId: "656324462532",
+  appId: "1:656324462532:web:44acfb5a61c0f693c68691",
+  measurementId: "G-R845YWQNX9",
+  databaseURL: "https://code-quest-a3f47-default-rtdb.europe-west1.firebasedatabase.app/"
 };
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const database = getDatabase(app);
 
 const LOCAL_COINS_KEY = 'code_quest_local_coins_fallback';
 
