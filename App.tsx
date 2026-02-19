@@ -19,7 +19,7 @@ import {
   onAuthStateChanged,
   signOut
 } from './firebaseConfig';
-import { ref, update, set, onValue, remove, off } from "firebase/database";
+import { ref, update, set, onValue, remove, off, runTransaction } from "firebase/database";
 import { 
   Terminal, Coins, ShieldCheck, CheckCircle2, 
   XCircle as XIcon, Loader2, Timer, Cpu, 
@@ -29,15 +29,16 @@ import {
   ChevronRight, Sword, Filter, RotateCcw, Mail, Lock, UserPlus, LogIn,
   UserCircle, ArrowLeft, Award, Code, Globe, Fingerprint, Copy, Search,
   ArrowRight, Play, HeartPulse, UserSearch, Users, Dices, Send,
-  Check, X, Hourglass, Trophy, PartyPopper
+  Check, X, Hourglass, Trophy, PartyPopper, TrendingUp, TrendingDown, Skull,
+  Ghost
 } from 'lucide-react';
 
 const QUESTION_TIME = 15; 
 const ENTRY_FEE = 100;
 const BATTLE_STAKE = 100;
 const BATTLE_WIN_REWARD = 200;
-const LOSS_PENALTY = 200;
-const DAILY_LOSS_PENALTY = 20000;
+const LOSS_PENALTY_BASE = 100; 
+const DAILY_LOSS_PENALTY_MIN = 5000;
 const REVIVE_COST = 5000;
 const DAILY_QUEST_REWARD = 50000;
 const BATTLE_TARGET = 5; 
@@ -145,12 +146,18 @@ const translations = {
     opponent: "الخصم",
     waitingTurn: "الخصم يجيب الآن...",
     yourTurn: "دورك الآن!",
-    turnCount: "الضربة",
+    turnCount: "جولة",
     draw: "تعادل!",
     drawSub: "لقد كنتما متساويين في القوة واستعدتما الرهان!",
     wonAgainstFriend: "لقد هزمت صديقك وسحبت الرهان!",
     lostAgainstFriend: "لقد فاز صديقك هذه المرة، حظاً أوفر!",
     payoutWinner: "مبروك! ربحت {amount} كوينز",
+    gainLabel: "الجائزة الكبرى",
+    lossLabel: "خسارة البداية",
+    riskNotice: "المخاطرة تزداد بالتقدم!",
+    withdrawalWarning: "تنبيه! سيتم خصم مبلغ الرهان كاملاً من محفظتك في حال الانسحاب الآن",
+    withdrawalConfirm: "تأكيد الانسحاب",
+    cancel: "إلغاء",
     langDesc: {
       javascript: "لغة الويب الأكثر شهرة وقوة",
       python: "لغة الذكاء الاصطناعي وعلم البيانات",
@@ -258,12 +265,18 @@ const translations = {
     opponent: "Opponent",
     waitingTurn: "Opponent is answering...",
     yourTurn: "It's your turn!",
-    turnCount: "Strike",
+    turnCount: "Round",
     draw: "Draw!",
     drawSub: "You both are equally strong! Stakes returned.",
     wonAgainstFriend: "You defeated your friend and took the prize!",
     lostAgainstFriend: "Your friend won this time, better luck next!",
     payoutWinner: "Congrats! You won {amount} Coins",
+    gainLabel: "Grand Prize",
+    lossLabel: "Initial Loss",
+    riskNotice: "Risk scales with progress!",
+    withdrawalWarning: "Warning! The full stake will be deducted from your wallet if you withdraw now",
+    withdrawalConfirm: "Confirm Withdrawal",
+    cancel: "Cancel",
     langDesc: {
       javascript: "The most popular and powerful web language",
       python: "The language of AI and Data Science",
@@ -341,14 +354,13 @@ const UserAvatar = ({ name, size = "w-14 h-14", textClassName = "text-xl" }: { n
 
 // Profile Page Component
 const ProfilePage = ({ name, playerName, leaderboard, playerCode, totalCoins, t, logout, setViewedProfile }: any) => {
-  const isMe = name === playerName;
   const userStats = leaderboard.find((e: any) => e.name === name) || { score: 0, scoreFormatted: '0', language: 'N/A' };
   const [copied, setCopied] = useState(false);
   const handleCopy = () => { navigator.clipboard.writeText(playerCode); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   return (
     <div className="min-h-screen bg-[#020617] text-white p-6 animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar">
       <header className="flex items-center justify-between mb-10 max-w-2xl mx-auto">
-        <button onClick={() => setViewedProfile(null)} className="p-4 bg-[#0a0f1e] rounded-2xl border border-[#1e293b] active:scale-95"><ArrowLeft className="w-6 h-6" /></button>
+        <button onClick={() => setViewedProfile(null)} className="p-4 bg-[#0a0f1e] rounded-2xl border border-[#1e293b] active:scale-90 transition-transform"><ArrowLeft className="w-6 h-6" /></button>
         <h2 className="text-2xl font-black italic">{t.profile}</h2>
         <div className="w-14"></div>
       </header>
@@ -360,12 +372,12 @@ const ProfilePage = ({ name, playerName, leaderboard, playerCode, totalCoins, t,
             </div>
             <h1 className="text-3xl font-black mb-2 tracking-tight">{name}</h1>
             <p className="text-blue-400 font-bold uppercase text-[10px] tracking-[0.3em]">{userStats.language} SPECIALIST</p>
-            {isMe && (
+            {name === playerName && (
               <div className="mt-6 inline-flex items-center gap-2 bg-[#0f172a] border border-white/5 px-4 py-2 rounded-2xl">
                  <Fingerprint className="w-4 h-4 text-blue-500" />
                  <span className="text-slate-400 font-bold text-xs">{t.userId}:</span>
                  <span className="text-white font-black font-mono tracking-widest">{playerCode}</span>
-                 <button onClick={handleCopy} className="ml-2 hover:text-blue-400 transition-colors relative">
+                 <button onClick={handleCopy} className="ml-2 hover:text-blue-400 transition-colors relative active:scale-75">
                     {copied ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                  </button>
               </div>
@@ -375,7 +387,7 @@ const ProfilePage = ({ name, playerName, leaderboard, playerCode, totalCoins, t,
             <div className="bg-[#0a0f1e] border border-[#1e293b] p-6 rounded-[2rem] flex flex-col items-center gap-2 shadow-lg">
                <Coins className="w-8 h-8 text-yellow-500" />
                <span className="text-[10px] text-slate-500 font-black uppercase">{t.winnings}</span>
-               <span className="text-xl font-mono font-black text-yellow-500">{isMe ? totalCoins.toLocaleString() : userStats.scoreFormatted}</span>
+               <span className="text-xl font-mono font-black text-yellow-500">{name === playerName ? totalCoins.toLocaleString() : userStats.scoreFormatted}</span>
             </div>
             <div className="bg-[#0a0f1e] border border-[#1e293b] p-6 rounded-[2rem] flex flex-col items-center gap-2 shadow-lg">
                <Medal className="w-8 h-8 text-blue-500" />
@@ -383,7 +395,7 @@ const ProfilePage = ({ name, playerName, leaderboard, playerCode, totalCoins, t,
                <span className="text-xl font-mono font-black text-blue-400">#{leaderboard.findIndex((e: any) => e.name === name) + 1 || '??'}</span>
             </div>
          </div>
-         {isMe && (
+         {name === playerName && (
             <button onClick={logout} className="w-full bg-red-500/10 border border-red-500/20 py-6 rounded-[2.5rem] text-red-500 font-black text-xl flex items-center justify-center gap-3 hover:bg-red-500/20 active:scale-95 transition-all"><LogOut className="w-6 h-6" /> {t.logout}</button>
          )}
       </div>
@@ -399,7 +411,6 @@ const App: React.FC = () => {
   const [viewedProfile, setViewedProfile] = useState<string | null>(null);
   const [mascotMood, setMascotMood] = useState<'normal' | 'angry' | 'victory' | 'upset'>('normal');
 
-  // Friend Challenge State
   const [activeChallengePath, setActiveChallengePath] = useState<string | null>(null);
   const [showFriendSetup, setShowFriendSetup] = useState(false);
   const [friendLang, setFriendLang] = useState<string>(LANGUAGES[0].id);
@@ -411,18 +422,24 @@ const App: React.FC = () => {
   const [matchResultState, setMatchResultState] = useState<'win' | 'loss' | 'draw' | null>(null);
   const [isPreparingQuestions, setIsPreparingQuestions] = useState(false);
 
-  // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState<{name: string, userCode: string} | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
   const [selectedLangForDifficulty, setSelectedLangForDifficulty] = useState<string | null>(null);
-  const [battleProgress, setBattleProgress] = useState({ user: 0, ai: 0 });
+  
+  // AI Battle State
+  const [battleTurn, setBattleTurn] = useState(1);
+  const [turnOwner, setTurnOwner] = useState<'player' | 'ai'>('player');
+  const [aiAnswersHistory, setAiAnswersHistory] = useState<boolean[]>([]);
+  const [playerBattleAnswers, setPlayerBattleAnswers] = useState<boolean[]>([]);
   const [aiStatus, setAiStatus] = useState<'thinking' | 'idle' | 'answered'>('idle');
+
   const [isDailyCompleted, setIsDailyCompleted] = useState(localStorage.getItem(LAST_DAILY_COMPLETED_KEY) === new Date().toDateString());
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardFilter, setLeaderboardFilter] = useState<string>('all');
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   
   const [gameState, setGameState] = useState<GameState>({
     currentLanguage: null,
@@ -442,12 +459,10 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showRevive, setShowRevive] = useState(false);
   
-  // Authenticated State
   const [playerName, setPlayerName] = useState<string>('');
   const [playerCode, setPlayerCode] = useState<string>('000000');
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   
-  // Auth Form State
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formUsername, setFormUsername] = useState('');
@@ -456,15 +471,29 @@ const App: React.FC = () => {
   
   const [totalCoins, setTotalCoins] = useState<number>(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [currentCalculatedPenalty, setCurrentCalculatedPenalty] = useState(0);
   
   const timerRef = useRef<number | null>(null);
   const aiTimerRef = useRef<number | null>(null);
 
-  // Constants for turns
   const isMultiplayer = !!(gameMode === 'friend' && multiplayerData);
-  const isMyTurn = isMultiplayer ? (multiplayerData.currentTurn === playerCode) : true;
+  // Fix: Use type assertion for gameMode to avoid unintentional narrowing issues with TypeScript.
+  const isMyTurn = (gameMode as string) === 'battle' ? (turnOwner === 'player') : (isMultiplayer ? (multiplayerData?.currentTurn === playerCode) : true);
+  const isHost = isMultiplayer && multiplayerData.hostCode === playerCode;
 
-  // Monitor Auth State
+  // Intercepting hardware back button
+  useEffect(() => {
+    if (gameMode && !showExitConfirm && !gameState.isGameOver && !gameState.isGameWon) {
+      window.history.pushState(null, '', window.location.href);
+      const handleBackButton = () => {
+        window.history.pushState(null, '', window.location.href);
+        setShowExitConfirm(true);
+      };
+      window.addEventListener('popstate', handleBackButton);
+      return () => window.removeEventListener('popstate', handleBackButton);
+    }
+  }, [gameMode, showExitConfirm, gameState.isGameOver, gameState.isGameWon]);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -501,60 +530,41 @@ const App: React.FC = () => {
     }
   }, [playerName]);
 
-  // Realtime Listener for receiving challenges & handling Live Turn status
   useEffect(() => {
     if (playerCode !== '000000' && playerName) {
       const myChallengeRef = ref(database, `challenges/${playerCode}`);
       const unsub = onValue(myChallengeRef, async (snapshot) => {
         const data = snapshot.val();
-        
-        // CASE 1: Incoming Challenge Notification
         if (data && (data.status === 'setup' || data.status === 'lobby') && data.hostCode !== playerCode) {
           setIncomingChallenge(data);
         } else {
           setIncomingChallenge(null);
         }
-
-        // CASE 2: Multiplayer Sync
         if (data && data.status === 'active' && !isMatchFinished) {
            setMultiplayerData(data);
            setActiveChallengePath(playerCode);
-           
            if (gameMode !== 'friend') {
              setGameMode('friend');
              initFriendGameState(data);
            }
-           
            const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
            setFriendProgress({
              me: myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0),
              him: myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0)
            });
-
-           // Question Sync: Both read from the 'questions' array stored in RTDB
            if (data.questions && data.totalTurns <= MAX_TURNS) {
              const turnIdx = data.totalTurns - 1;
              const q = data.questions[turnIdx];
              if (q) {
                setCurrentQuestion(q);
                setIsLoading(false);
-               const itsMyTurn = data.currentTurn === playerCode;
-               if (itsMyTurn && selectedOption === null) {
-                 startTimer();
-               } else if (!itsMyTurn) {
-                 if (timerRef.current) window.clearInterval(timerRef.current);
-               }
+               const itsMyTurnNow = data.currentTurn === playerCode;
+               if (itsMyTurnNow && selectedOption === null) startTimer();
+               else if (!itsMyTurnNow && timerRef.current) window.clearInterval(timerRef.current);
              }
            }
-
-           if (data.totalTurns > MAX_TURNS) {
-             handleMultiplayerEnd(data);
-           }
-
-           // Host logic: Pre-generate questions if missing
-           if (myRole === 'host' && !data.questions && !isPreparingQuestions) {
-             prepareMatchQuestions(data);
-           }
+           if (data.totalTurns > MAX_TURNS) handleMultiplayerEnd(data);
+           if (myRole === 'host' && !data.questions && !isPreparingQuestions) prepareMatchQuestions(data);
         }
       });
       return () => unsub();
@@ -565,15 +575,11 @@ const App: React.FC = () => {
     setIsPreparingQuestions(true);
     setIsLoading(true);
     try {
-      const qs: Question[] = [];
-      // Generate 10 questions in parallel for speed
       const promises = Array.from({ length: 10 }).map((_, i) => 
         generateProgrammingQuestion(data.selectedLanguage, Math.ceil((i+1)/2), i, uiLang, Difficulty.Intermediate)
       );
       const results = await Promise.all(promises);
-      await update(ref(database, `challenges/${playerCode}`), {
-        questions: results
-      });
+      await update(ref(database, `challenges/${playerCode}`), { questions: results });
     } catch (e) {
       console.error("Match preparation failed", e);
     } finally {
@@ -600,29 +606,33 @@ const App: React.FC = () => {
     if (isMatchFinished) return;
     setIsMatchFinished(true);
     if (timerRef.current) window.clearInterval(timerRef.current);
-    
-    const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
-    const myScore = myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0);
-    const opponentScore = myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0);
 
-    if (myScore > opponentScore) {
+    const isHostLocal = data.hostCode === playerCode;
+    const myAnswers = isHostLocal ? (data.hostAnswers || []) : (data.opponentAnswers || []);
+    const hisAnswers = isHostLocal ? (data.opponentAnswers || []) : (data.hostAnswers || []);
+    
+    const myScore = myAnswers.filter((a: any) => a === true).length;
+    const hisScore = hisAnswers.filter((a: any) => a === true).length;
+
+    if (myScore > hisScore) {
        setMatchResultState('win');
        setMascotMood('victory');
-       setGameState(prev => ({ ...prev, isGameWon: true, score: (data.betAmount * 2).toLocaleString() }));
-       await updateCoins(data.betAmount * 2);
-    } else if (myScore < opponentScore) {
+       const winAmount = data.betAmount * 2;
+       setGameState(prev => ({ ...prev, isGameWon: true, score: winAmount.toLocaleString() }));
+       await updateCoins(winAmount);
+    } else if (myScore < hisScore) {
        setMatchResultState('loss');
        setMascotMood('angry');
        setGameState(prev => ({ ...prev, isGameOver: true }));
     } else {
        setMatchResultState('draw');
        setMascotMood('normal');
-       await updateCoins(data.betAmount);
+       await updateCoins(data.betAmount); // Refund
     }
-    
-    setTimeout(() => {
-      if (playerCode !== '000000') remove(ref(database, `challenges/${playerCode}`));
-    }, 5000);
+
+    if (isHostLocal) {
+      setTimeout(() => { if (playerCode !== '000000') remove(ref(database, `challenges/${playerCode}`)); }, 10000);
+    }
   };
 
   const loadLeaderboard = () => {
@@ -650,11 +660,7 @@ const App: React.FC = () => {
       } else {
         await signInWithEmailAndPassword(auth, formEmail, formPassword);
       }
-    } catch (e: any) {
-      setAuthError(e.message);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (e: any) { setAuthError(e.message); } finally { setIsLoading(false); }
   };
 
   const handleLogout = async () => {
@@ -671,14 +677,8 @@ const App: React.FC = () => {
     setSearchResult(null);
     const result = await searchUserByCode(searchQuery);
     setIsSearching(false);
-    if (result) {
-      setMascotMood('normal');
-      setSearchResult(result);
-    } else {
-      setMascotMood('upset');
-      setTimeout(() => setMascotMood('normal'), 3000);
-      alert(t.userNotFound);
-    }
+    if (result) { setMascotMood('normal'); setSearchResult(result); }
+    else { setMascotMood('upset'); setTimeout(() => setMascotMood('normal'), 3000); alert(t.userNotFound); }
   };
 
   const toggleLanguage = () => {
@@ -703,12 +703,8 @@ const App: React.FC = () => {
       setCurrentQuestion(question);
       setGameState(prev => ({ ...prev, timeLeft: QUESTION_TIME }));
       startTimer();
-      if (gameMode === 'battle') simulateAiMove();
-    } catch (error) {
-      setTimeout(() => fetchQuestion(lang, qIdx, stage, difficulty), 2000);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { setTimeout(() => fetchQuestion(lang, qIdx, stage, difficulty), 2000); }
+    finally { setIsLoading(false); }
   };
 
   const startTimer = () => {
@@ -729,14 +725,22 @@ const App: React.FC = () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
     if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
     
-    if (gameMode === 'friend') {
-      handleMultiplayerTurnResult(false);
-    } else if (!gameState.revivedWithCoins && !gameState.revivedWithAd && gameMode !== 'battle') {
+    // Fix: Using type assertion for gameMode to avoid accidental logic narrowing errors.
+    if ((gameMode as string) === 'battle') {
+       handleBattleTurnResult(false);
+    } else if (gameMode === 'friend') {
+       handleMultiplayerTurnResult(false);
+    } else if (!gameState.revivedWithCoins && !gameState.revivedWithAd && (gameMode as string) !== 'battle') {
       setMascotMood('upset');
       setShowRevive(true);
-    } else {
-      handleGameOver();
-    }
+    } else handleGameOver();
+  };
+
+  const calculateDynamicPenaltyValue = () => {
+    const currentScore = parseInt(gameState.score.replace(/,/g, '')) || 0;
+    let basePenalty = gameMode === 'daily' ? DAILY_LOSS_PENALTY_MIN : LOSS_PENALTY_BASE;
+    const riskFactor = Math.floor(currentScore * 0.25);
+    return ENTRY_FEE + basePenalty + riskFactor;
   };
 
   const handleGameOver = async () => {
@@ -744,11 +748,25 @@ const App: React.FC = () => {
     if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
     setMascotMood('angry');
     setShowRevive(false);
-    const penalty = gameMode === 'daily' ? DAILY_LOSS_PENALTY : LOSS_PENALTY;
+    const penalty = calculateDynamicPenaltyValue();
+    setCurrentCalculatedPenalty(penalty);
     await updateCoins(-penalty);
     const earned = parseInt(gameState.score.replace(/,/g, ''));
     if (earned > 0) saveScoreToFirestore(playerName, earned, gameState.currentLanguage || 'mixed');
     setGameState(prev => ({ ...prev, isGameOver: true }));
+  };
+
+  const handleConfirmWithdrawal = async () => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
+    const penalty = calculateDynamicPenaltyValue();
+    await updateCoins(-penalty);
+    if (isMultiplayer && activeChallengePath) {
+      remove(ref(database, `challenges/${activeChallengePath}`));
+    }
+    setShowExitConfirm(false);
+    setGameMode(null);
+    setGameState(prev => ({ ...prev, isGameOver: false, isGameWon: false }));
   };
 
   const handleReviveWithCoins = async () => {
@@ -760,84 +778,104 @@ const App: React.FC = () => {
 
   const handleReviveWithAd = async () => {
     const success = await AdService.showRewardedAd();
-    if (success) {
-      setGameState(prev => ({ ...prev, revivedWithAd: true }));
-      continueGame();
-    }
+    if (success) { setGameState(prev => ({ ...prev, revivedWithAd: true })); continueGame(); }
   };
 
   const continueGame = () => {
-    setShowRevive(false);
-    setMascotMood('normal');
+    setShowRevive(false); setMascotMood('normal');
     fetchQuestion(gameState.currentLanguage!, gameState.currentQuestionIndex, Math.floor(gameState.currentQuestionIndex / 3) + 1, gameState.difficulty);
   };
 
-  const simulateAiMove = () => {
-    if (gameMode !== 'battle' || gameState.isGameOver || gameState.isGameWon) return;
+  // AI Battle Sequencer
+  const handleBattleTurnResult = (isCorrect: boolean) => {
+    const newPlayerHistory = [...playerBattleAnswers, isCorrect];
+    setPlayerBattleAnswers(newPlayerHistory);
+    setTurnOwner('ai');
+    simulateAiTurn();
+  };
+
+  const simulateAiTurn = () => {
     setAiStatus('thinking');
     if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
+    
     aiTimerRef.current = window.setTimeout(() => {
+      // AI Logic: Based on random factor but leans correct (70%)
+      const isCorrect = Math.random() < 0.70;
+      const newAiHistory = [...aiAnswersHistory, isCorrect];
+      setAiAnswersHistory(newAiHistory);
       setAiStatus('idle');
-      const isCorrect = Math.random() < 0.75;
-      if (isCorrect) {
-        setBattleProgress(prev => {
-          const newAiScore = prev.ai + 1;
-          if (newAiScore >= BATTLE_TARGET) { setGameState(g => ({ ...g, isGameOver: true })); handleGameOver(); }
-          else simulateAiMove();
-          return { ...prev, ai: newAiScore };
-        });
-      } else setTimeout(simulateAiMove, 2000);
-    }, 4000);
+
+      if (battleTurn < MAX_TURNS) {
+        setBattleTurn(prev => prev + 1);
+        setTurnOwner('player');
+        // Fetch next question for player
+        fetchQuestion(gameState.currentLanguage!, battleTurn, Math.floor(battleTurn / 3) + 1, Difficulty.Intermediate);
+      } else {
+        // End Battle
+        finalizeBattle(newAiHistory);
+      }
+    }, 3000);
+  };
+
+  const finalizeBattle = async (finalAiHistory: boolean[]) => {
+    const playerPoints = playerBattleAnswers.filter(a => a === true).length;
+    const aiPoints = finalAiHistory.filter(a => a === true).length;
+
+    if (playerPoints > aiPoints) {
+      setMatchResultState('win');
+      setMascotMood('victory');
+      const winAmount = BATTLE_WIN_REWARD;
+      setGameState(prev => ({ ...prev, isGameWon: true, score: winAmount.toLocaleString() }));
+      await updateCoins(winAmount);
+    } else if (playerPoints < aiPoints) {
+      setMatchResultState('loss');
+      setMascotMood('angry');
+      setGameState(prev => ({ ...prev, isGameOver: true }));
+    } else {
+      setMatchResultState('draw');
+      setMascotMood('normal');
+      await updateCoins(BATTLE_STAKE); // Refund
+    }
   };
 
   const handleMultiplayerTurnResult = async (isCorrect: boolean) => {
     if (!activeChallengePath || !multiplayerData) return;
-    
-    const isHost = multiplayerData.hostCode === playerCode;
-    const opponentCode = isHost ? multiplayerData.opponentCode : multiplayerData.hostCode;
+    const isHostLocal = multiplayerData.hostCode === playerCode;
+    const opponentCode = isHostLocal ? multiplayerData.opponentCode : multiplayerData.hostCode;
     const currentTurnCount = multiplayerData.totalTurns;
+    
+    const historyKey = isHostLocal ? 'hostAnswers' : 'opponentAnswers';
+    const currentHistory = multiplayerData[historyKey] || [];
+    const newHistory = [...currentHistory, isCorrect];
 
-    const updates: any = {
-      currentTurn: opponentCode,
-      totalTurns: currentTurnCount + 1
+    const updates: any = { 
+      currentTurn: opponentCode, 
+      totalTurns: currentTurnCount + 1,
+      [historyKey]: newHistory
     };
 
     if (isCorrect) {
-      if (isHost) updates.hostProgress = (multiplayerData.hostProgress || 0) + 1;
+      if (isHostLocal) updates.hostProgress = (multiplayerData.hostProgress || 0) + 1;
       else updates.opponentProgress = (multiplayerData.opponentProgress || 0) + 1;
     }
-
     await update(ref(database, `challenges/${activeChallengePath}`), updates);
-    setSelectedOption(null);
-    setCurrentQuestion(null);
+    setSelectedOption(null); setCurrentQuestion(null);
   };
 
   const proceedToNextStage = async () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
     if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current);
-    setSelectedOption(null);
-    setIsLoading(true);
-
-    if (gameMode === 'battle') {
-      const newScore = battleProgress.user + 1;
-      setBattleProgress(prev => ({ ...prev, user: newScore }));
-      if (newScore >= BATTLE_TARGET) {
-        setGameState(prev => ({ ...prev, isGameWon: true }));
-        setMascotMood('victory');
-        await updateCoins(BATTLE_WIN_REWARD);
-      } else fetchQuestion('mixed', gameState.currentQuestionIndex + 1, 3);
-    } else if (gameMode === 'daily') {
-      setGameState(prev => ({ ...prev, isGameWon: true }));
-      setMascotMood('victory');
+    setSelectedOption(null); setIsLoading(true);
+    
+    if (gameMode === 'daily') {
+      setGameState(prev => ({ ...prev, isGameWon: true })); setMascotMood('victory');
       await updateCoins(DAILY_QUEST_REWARD);
-      setIsDailyCompleted(true);
-      localStorage.setItem(LAST_DAILY_COMPLETED_KEY, new Date().toDateString());
+      setIsDailyCompleted(true); localStorage.setItem(LAST_DAILY_COMPLETED_KEY, new Date().toDateString());
     } else {
       const ladder = PRIZE_LADDERS[gameState.difficulty || Difficulty.Intermediate];
       const nextIdx = gameState.currentQuestionIndex + 1;
       if (nextIdx >= 15) {
-        setGameState(prev => ({ ...prev, isGameWon: true }));
-        setMascotMood('victory');
+        setGameState(prev => ({ ...prev, isGameWon: true })); setMascotMood('victory');
         await updateCoins(parseInt(ladder[14].replace(/,/g, '')));
       } else {
         setGameState(prev => ({ ...prev, currentQuestionIndex: nextIdx, score: ladder[gameState.currentQuestionIndex] }));
@@ -853,23 +891,19 @@ const App: React.FC = () => {
     const isCorrect = idx === currentQuestion?.correctAnswerIndex;
     
     setTimeout(() => { 
-      if (gameMode === 'friend') {
-        handleMultiplayerTurnResult(isCorrect);
-      } else {
-        if (isCorrect) proceedToNextStage(); 
-        else triggerGameOverOrRevive(); 
-      }
+      // Fix: Consistent type assertion for gameMode state.
+      if ((gameMode as string) === 'battle') handleBattleTurnResult(isCorrect);
+      else if (gameMode === 'friend') handleMultiplayerTurnResult(isCorrect); 
+      else if (isCorrect) proceedToNextStage(); 
+      else triggerGameOverOrRevive(); 
     }, 1500);
   };
 
-  const handleLanguageClick = (langId: string) => {
-    setSelectedLangForDifficulty(langId);
-  };
+  const handleLanguageClick = (langId: string) => setSelectedLangForDifficulty(langId);
 
   const startDailyQuest = async (difficulty: Difficulty) => {
     if (isDailyCompleted) return alert(t.dailyLimit);
-    setGameMode('daily');
-    setMascotMood('normal');
+    setGameMode('daily'); setMascotMood('normal');
     setGameState({ currentLanguage: 'Daily Master Challenge', currentStage: 1, currentQuestionIndex: 0, score: '0', isGameOver: false, isGameWon: false, withdrawn: false, timeLeft: QUESTION_TIME, revivedWithCoins: false, revivedWithAd: false, difficulty });
     await fetchQuestion('random', 0, 5, difficulty);
   };
@@ -877,9 +911,8 @@ const App: React.FC = () => {
   const startAIBattle = async () => {
     if (totalCoins < BATTLE_STAKE) return alert(t.insufficientBalance);
     await updateCoins(-BATTLE_STAKE);
-    setGameMode('battle');
-    setMascotMood('normal');
-    setBattleProgress({ user: 0, ai: 0 });
+    setGameMode('battle'); setMascotMood('normal');
+    setBattleTurn(1); setTurnOwner('player'); setAiAnswersHistory([]); setPlayerBattleAnswers([]);
     setGameState({ currentLanguage: t.mixed, currentStage: 1, currentQuestionIndex: 0, score: '0', isGameOver: false, isGameWon: false, withdrawn: false, timeLeft: QUESTION_TIME, revivedWithCoins: false, revivedWithAd: false, difficulty: Difficulty.Advanced });
     await fetchQuestion('javascript', 0, 1, Difficulty.Advanced);
   };
@@ -887,72 +920,37 @@ const App: React.FC = () => {
   const handleStartFriendChallenge = async () => {
     if (totalCoins < friendStakes) return alert(t.insufficientBalance);
     await updateCoins(-friendStakes);
-    
     if (searchResult) {
       const challengeRef = ref(database, `challenges/${searchResult.userCode}`);
-      update(challengeRef, { 
-        hostName: playerName,
-        hostCode: playerCode,
-        opponentName: searchResult.name,
-        opponentCode: searchResult.userCode,
-        selectedLanguage: friendLang,
-        betAmount: friendStakes,
-        status: 'lobby',
-        updatedAt: Date.now()
-      });
+      update(challengeRef, { hostName: playerName, hostCode: playerCode, opponentName: searchResult.name, opponentCode: searchResult.userCode, selectedLanguage: friendLang, betAmount: friendStakes, status: 'lobby', updatedAt: Date.now() });
       setActiveChallengePath(searchResult.userCode);
     }
-
-    setShowFriendSetup(false);
-    setGameMode('friend');
-    setMascotMood('normal');
+    setShowFriendSetup(false); setGameMode('friend'); setMascotMood('normal');
   };
 
   const handleAcceptChallenge = async () => {
     if (!incomingChallenge) return;
     if (totalCoins < incomingChallenge.betAmount) return alert(t.insufficientBalance);
-    
     await updateCoins(-incomingChallenge.betAmount);
-    
     const challengeRef = ref(database, `challenges/${playerCode}`);
-    await update(challengeRef, { 
-      status: 'active', 
-      hostProgress: 0, 
-      opponentProgress: 0,
-      totalTurns: 1,
-      currentTurn: incomingChallenge.hostCode 
-    });
-    
-    setIncomingChallenge(null);
-    setGameMode('friend');
-    setActiveChallengePath(playerCode);
-    setMascotMood('normal');
+    await update(challengeRef, { status: 'active', hostProgress: 0, opponentProgress: 0, totalTurns: 1, currentTurn: incomingChallenge.hostCode });
+    setIncomingChallenge(null); setGameMode('friend'); setActiveChallengePath(playerCode); setMascotMood('normal');
   };
 
   const handleDeclineChallenge = async () => {
     if (!incomingChallenge) return;
     const challengeRef = ref(database, `challenges/${playerCode}`);
-    await remove(challengeRef);
-    setIncomingChallenge(null);
+    await remove(challengeRef); setIncomingChallenge(null);
   };
 
   const startNewGame = async (lang: string, difficulty: Difficulty) => {
     if (totalCoins < ENTRY_FEE) return alert(t.insufficientBalance);
-    await updateCoins(-ENTRY_FEE);
-    setSelectedLangForDifficulty(null);
-    setGameMode('classic');
-    setMascotMood('normal');
+    await updateCoins(-ENTRY_FEE); setSelectedLangForDifficulty(null); setGameMode('classic'); setMascotMood('normal');
     setGameState({ currentLanguage: lang, currentStage: 1, currentQuestionIndex: 0, score: '0', isGameOver: false, isGameWon: false, withdrawn: false, timeLeft: QUESTION_TIME, revivedWithCoins: false, revivedWithAd: false, difficulty });
     await fetchQuestion(lang, 0, 1, difficulty);
   };
 
-  if (isAuthChecking) {
-    return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center">
-        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-      </div>
-    );
-  }
+  if (isAuthChecking) return (<div className="min-h-screen bg-[#020617] flex items-center justify-center"><Loader2 className="w-12 h-12 text-blue-500 animate-spin" /></div>);
 
   if (!playerName) {
     return (
@@ -977,7 +975,7 @@ const App: React.FC = () => {
               <input type="password" placeholder={t.passwordPlaceholder} value={formPassword} onChange={(e) => setFormPassword(e.target.value)} className={`w-full bg-[#0f172a] border border-[#1e293b] rounded-2xl ${uiLang === 'ar' ? 'pr-12' : 'pl-12'} py-4 text-center focus:border-blue-500 outline-none`} />
             </div>
             {authError && <p className="text-red-500 text-[10px] font-bold mt-2">{authError}</p>}
-            <button type="submit" disabled={isLoading} className="w-full bg-blue-600 py-5 rounded-[2rem] text-xl font-black transition-all hover:bg-blue-500 flex items-center justify-center gap-2 mt-4 active:scale-95">{isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : (authMode === 'login' ? <LogIn className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />)}{authMode === 'login' ? t.saveName : t.createAccount}</button>
+            <button type="submit" disabled={isLoading} className="w-full bg-blue-600 py-5 rounded-[2rem] text-xl font-black transition-all hover:bg-blue-500 flex items-center justify-center gap-2 mt-4 active:scale-95 touch-manipulation">{isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : (authMode === 'login' ? <LogIn className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />)}{authMode === 'login' ? t.saveName : t.createAccount}</button>
             <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); }} className="text-sm text-blue-400 font-bold hover:underline block w-full mt-2">{authMode === 'login' ? t.toggleSignup : t.toggleLogin}</button>
           </form>
         </div>
@@ -985,31 +983,66 @@ const App: React.FC = () => {
     );
   }
 
-  if (viewedProfile) {
-    return <ProfilePage name={viewedProfile} playerName={playerName} leaderboard={leaderboard} playerCode={playerCode} totalCoins={totalCoins} t={t} logout={handleLogout} setViewedProfile={setViewedProfile} />;
-  }
+  if (viewedProfile) return <ProfilePage name={viewedProfile} playerName={playerName} leaderboard={leaderboard} playerCode={playerCode} totalCoins={totalCoins} t={t} logout={handleLogout} setViewedProfile={setViewedProfile} />;
 
   if (!gameMode) {
     return (
       <div className="min-h-screen bg-[#020617] text-white font-['Tajawal'] pb-32 overflow-x-hidden relative" dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
         {selectedLangForDifficulty && (
-          <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 animate-in fade-in duration-300 backdrop-blur-sm">
-            <div className="bg-[#0a0f1e] border border-white/10 rounded-[3rem] p-8 w-full max-w-lg shadow-2xl relative animate-in zoom-in-95 duration-300">
-              <button onClick={() => setSelectedLangForDifficulty(null)} className="absolute top-6 left-6 p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors"><XIcon className="w-5 h-5" /></button>
-              <h2 className="text-2xl font-black mb-6 italic text-blue-400">{t.selectDifficulty}</h2>
-              <div className="grid gap-3">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[500] flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="bg-[#0a0f1e] border-2 border-blue-500/20 rounded-[3rem] w-full max-w-lg shadow-[0_0_80px_rgba(59,130,246,0.15)] relative animate-in zoom-in-95 duration-300 flex flex-col max-h-[85vh]">
+              <div className="p-8 pb-4 flex items-center justify-between border-b border-white/5 flex-shrink-0">
+                <div className="flex flex-col">
+                  <h2 className="text-2xl font-black italic text-blue-400 leading-none">{t.selectDifficulty}</h2>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2">{selectedLangForDifficulty.toUpperCase()} EDITION</span>
+                </div>
+                <button onClick={() => setSelectedLangForDifficulty(null)} className="p-3 bg-white/5 rounded-2xl hover:bg-red-500/20 hover:text-red-500 transition-all active:scale-75"><XIcon className="w-6 h-6" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-4 relative">
+                <div className="sticky top-0 h-4 w-full bg-gradient-to-b from-[#0a0f1e] to-transparent z-10 pointer-events-none"></div>
                 {[
-                  { id: Difficulty.Beginner, label: t.beginner, color: 'text-green-500', bg: 'hover:bg-green-500/5' },
-                  { id: Difficulty.Intermediate, label: t.intermediate, color: 'text-blue-500', bg: 'hover:bg-blue-500/5' },
-                  { id: Difficulty.Advanced, label: t.advanced, color: 'text-purple-500', bg: 'hover:bg-purple-500/5' },
-                  { id: Difficulty.Expert, label: t.expert, color: 'text-red-500', bg: 'hover:bg-red-500/5' },
-                  { id: Difficulty.Master, label: t.masterLevel, color: 'text-yellow-500', bg: 'hover:bg-yellow-500/5' }
+                  { id: Difficulty.Beginner, label: t.beginner, emoji: '💡', color: 'text-green-500', border: 'border-green-500/20', bg: 'hover:bg-green-500/5', gain: PRIZE_LADDERS[Difficulty.Beginner][14] },
+                  { id: Difficulty.Intermediate, label: t.intermediate, emoji: '🚀', color: 'text-blue-500', border: 'border-blue-500/20', bg: 'hover:bg-blue-500/5', gain: PRIZE_LADDERS[Difficulty.Intermediate][14] },
+                  { id: Difficulty.Advanced, label: t.advanced, emoji: '🛡️', color: 'text-purple-500', border: 'border-purple-500/20', bg: 'hover:bg-purple-500/5', gain: PRIZE_LADDERS[Difficulty.Advanced][14] },
+                  { id: Difficulty.Expert, label: t.expert, emoji: '🏆', color: 'text-red-500', border: 'border-red-500/20', bg: 'hover:bg-red-500/5', gain: PRIZE_LADDERS[Difficulty.Expert][14] },
+                  { id: Difficulty.Master, label: t.masterLevel, emoji: '👑', color: 'text-yellow-500', border: 'border-yellow-500/20', bg: 'hover:bg-yellow-500/5', gain: PRIZE_LADDERS[Difficulty.Master][14] }
                 ].map(diff => (
-                  <button key={diff.id} onClick={() => startNewGame(selectedLangForDifficulty!, diff.id)} className={`flex items-center justify-between p-5 bg-[#0f172a] border border-white/5 rounded-3xl active:scale-95 transition-all ${diff.bg} group`}>
-                    <span className={`text-lg font-black ${diff.color}`}>{diff.label}</span>
-                    <ChevronRight className={`w-5 h-5 text-slate-600 group-hover:text-white ${uiLang === 'ar' ? 'rotate-180' : ''}`} />
+                  <button key={diff.id} onClick={() => startNewGame(selectedLangForDifficulty!, diff.id)} 
+                    className={`w-full flex flex-col p-6 bg-[#0f172a]/50 border-2 rounded-[2.5rem] transition-all duration-300 active:scale-[0.96] active:brightness-90 touch-manipulation group relative overflow-hidden ${diff.border} ${diff.bg} hover:border-white/20 active:border-blue-500/50 shadow-lg`}>
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                      <span className="text-6xl grayscale group-hover:grayscale-0 transition-all">{diff.emoji}</span>
+                    </div>
+                    <div className="flex items-center justify-between w-full mb-3 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-xl">{diff.emoji}</div>
+                        <span className={`text-xl font-black tracking-tight ${diff.color}`}>{diff.label}</span>
+                      </div>
+                      <ChevronRight className={`w-5 h-5 text-slate-500 group-hover:text-white group-active:translate-x-2 transition-all ${uiLang === 'ar' ? 'rotate-180' : ''}`} />
+                    </div>
+                    <div className="space-y-3 relative z-10">
+                      <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className={`h-full opacity-60 ${diff.color.replace('text-', 'bg-')}`} style={{ width: `${(diff.id / 5) * 100}%` }}></div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5 text-green-500 font-mono text-[11px] font-black uppercase">
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          <span>{t.gainLabel}: {diff.gain}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-red-500 font-mono text-[11px] font-black uppercase border-l border-white/10 pl-4">
+                          <TrendingDown className="w-3.5 h-3.5" />
+                          <span>{t.lossLabel}: {ENTRY_FEE + LOSS_PENALTY_BASE}</span>
+                        </div>
+                      </div>
+                    </div>
                   </button>
                 ))}
+                <div className="sticky bottom-0 h-4 w-full bg-gradient-to-t from-[#0a0f1e] to-transparent z-10 pointer-events-none"></div>
+              </div>
+              <div className="p-6 border-t border-white/5 text-center flex-shrink-0">
+                <div className="flex items-center justify-center gap-2 text-yellow-500/60 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">
+                  <Skull className="w-3 h-3" />
+                  <span>{t.riskNotice}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1017,23 +1050,23 @@ const App: React.FC = () => {
 
         <header className="px-6 pt-10 flex flex-col gap-6 max-w-2xl mx-auto">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setViewedProfile(playerName)}>
+            <div className="flex items-center gap-4 group cursor-pointer active:scale-95 transition-transform" onClick={() => setViewedProfile(playerName)}>
               <UserAvatar name={playerName} />
-              <div className="flex flex-col"><span className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">{t.loggedInAs}</span><span className="text-xl font-black text-white group-hover:text-blue-400 transition-colors leading-none">{playerName}</span></div>
+              <div className="flex flex-col"><span className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-1">{t.loggedInAs}</span><span className="text-xl font-black text-white group-hover:text-blue-400 transition-colors">{playerName}</span></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => { loadLeaderboard(); setShowLeaderboard(true); }} className={`p-4 bg-[#0a0f1e] rounded-2xl border border-[#1e293b] text-yellow-500 active:scale-95 transition-all shadow-lg hover:border-yellow-500/50`}><ListOrdered className="w-6 h-6" /></button>
+              <button onClick={() => { loadLeaderboard(); setShowLeaderboard(true); }} className={`p-4 bg-[#0a0f1e] rounded-2xl border border-[#1e293b] text-yellow-500 active:scale-90 transition-all shadow-lg hover:border-yellow-500/50`}><ListOrdered className="w-6 h-6" /></button>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="bg-[#0a0f1e] border border-[#1e293b] px-6 py-4 rounded-3xl flex items-center justify-between flex-1 shadow-2xl shadow-yellow-500/5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-500/10 rounded-xl"><Coins className="w-6 h-6 text-yellow-500" /></div>
-                <div className="flex flex-col"><span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">{t.wallet}</span><span className="text-2xl font-black text-yellow-500 font-mono leading-none">{totalCoins.toLocaleString()}</span></div>
+                <div className="flex flex-col"><span className="text-[10px] text-slate-500 font-bold uppercase mb-1">{t.wallet}</span><span className="text-2xl font-black text-yellow-500 font-mono leading-none">{totalCoins.toLocaleString()}</span></div>
               </div>
               <Sparkles className="w-5 h-5 text-yellow-500/50 animate-pulse" />
             </div>
-            <button onClick={toggleLanguage} className="p-4 h-[68px] bg-blue-500/10 rounded-3xl border border-blue-500/20 text-blue-400 active:scale-95 flex items-center gap-2 shadow-lg hover:border-blue-400"><LangIcon className="w-6 h-6" /><span className="font-black text-sm uppercase">{uiLang === 'ar' ? 'EN' : 'AR'}</span></button>
+            <button onClick={toggleLanguage} className="p-4 h-[68px] bg-blue-500/10 rounded-3xl border border-blue-500/20 text-blue-400 active:scale-90 flex items-center gap-2 shadow-lg hover:border-blue-400 transition-all"><LangIcon className="w-6 h-6" /><span className="font-black text-sm uppercase">{uiLang === 'ar' ? 'EN' : 'AR'}</span></button>
           </div>
         </header>
 
@@ -1043,16 +1076,16 @@ const App: React.FC = () => {
           <p className="text-slate-500 font-bold mb-8 uppercase text-xs tracking-widest opacity-80">{t.subtitle}</p>
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div onClick={() => startDailyQuest(Difficulty.Master)} className={`bg-[#0a0f1e] border-2 rounded-[2.5rem] p-6 flex flex-col items-center gap-2 transition-all cursor-pointer relative overflow-hidden group ${isDailyCompleted ? 'border-green-600/30 opacity-60' : 'border-blue-600/30 hover:border-blue-500 active:scale-95 shadow-xl shadow-blue-500/5'}`}><Calendar className="w-8 h-8 text-blue-500 group-hover:scale-110 transition-transform" /><h2 className="text-lg font-black">{isDailyCompleted ? t.dailyCompleted : t.dailyChallenge}</h2></div>
-              <div onClick={startAIBattle} className="bg-[#0a0f1e] border-2 border-purple-600/30 rounded-[2.5rem] p-6 flex flex-col items-center gap-2 hover:border-purple-500 active:scale-95 transition-all cursor-pointer relative overflow-hidden group shadow-xl shadow-purple-500/5"><BrainCircuit className="w-8 h-8 text-purple-500 group-hover:scale-110 transition-transform" /><h2 className="text-lg font-black">{t.aiBattle}</h2><span className="text-[10px] bg-purple-900/40 text-purple-400 px-3 py-1 rounded-full font-black uppercase tracking-wider">{t.stake}: 100</span></div>
+              <div onClick={() => startDailyQuest(Difficulty.Master)} className={`bg-[#0a0f1e] border-2 rounded-[2.5rem] p-6 flex flex-col items-center gap-2 transition-all cursor-pointer relative overflow-hidden group active:scale-[0.97] touch-manipulation ${isDailyCompleted ? 'border-green-600/30 opacity-60' : 'border-blue-600/30 hover:border-blue-500 active:bg-blue-500/5 shadow-xl shadow-blue-500/5'}`}><Calendar className="w-8 h-8 text-blue-500 group-hover:scale-110 transition-transform" /><h2 className="text-lg font-black">{isDailyCompleted ? t.dailyCompleted : t.dailyChallenge}</h2></div>
+              <div onClick={startAIBattle} className="bg-[#0a0f1e] border-2 border-purple-600/30 rounded-[2.5rem] p-6 flex flex-col items-center gap-2 hover:border-purple-500 active:scale-[0.97] active:bg-purple-500/5 transition-all cursor-pointer relative overflow-hidden group shadow-xl shadow-purple-500/5 touch-manipulation"><BrainCircuit className="w-8 h-8 text-purple-500 group-hover:scale-110 transition-transform" /><h2 className="text-lg font-black">{t.aiBattle}</h2><span className="text-[10px] bg-purple-900/40 text-purple-400 px-3 py-1 rounded-full font-black uppercase tracking-wider">{t.stake}: 100</span></div>
             </div>
-            <div onClick={() => { setShowFriendSetup(true); setSearchResult(null); setSearchQuery(''); }} className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border-2 border-indigo-600/30 rounded-[2.5rem] p-8 flex flex-col items-center gap-2 hover:border-indigo-400 active:scale-95 transition-all cursor-pointer relative overflow-hidden group shadow-2xl shadow-indigo-500/10">
+            <div onClick={() => { setShowFriendSetup(true); setSearchResult(null); setSearchQuery(''); }} className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border-2 border-indigo-600/30 rounded-[2.5rem] p-8 flex flex-col items-center gap-2 hover:border-indigo-400 active:scale-[0.98] transition-all cursor-pointer relative overflow-hidden group shadow-2xl shadow-indigo-500/10 touch-manipulation">
               <div className="p-4 bg-indigo-500/10 rounded-full border border-indigo-500/30 group-hover:scale-110 transition-transform"><Users className="w-10 h-10 text-indigo-400" /></div>
               <div className="flex flex-col items-center"><h2 className="text-2xl font-black tracking-tight text-white">{t.playWithFriend}</h2><div className="flex items-center gap-2 mt-1"><div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div><span className="text-[10px] text-indigo-300 font-black uppercase tracking-[0.2em]">P2P MODE</span></div></div>
             </div>
             <div className="grid gap-3">
               {LANGUAGES.map(lang => (
-                <div key={lang.id} onClick={() => handleLanguageClick(lang.id)} className="bg-[#0a0f1e] border border-slate-800 rounded-[2rem] p-6 flex items-center justify-between hover:border-blue-500 hover:bg-blue-500/5 active:scale-98 transition-all cursor-pointer group">
+                <div key={lang.id} onClick={() => handleLanguageClick(lang.id)} className="bg-[#0a0f1e] border border-slate-800 rounded-[2rem] p-6 flex items-center justify-between hover:border-blue-500 hover:bg-blue-500/5 active:scale-[0.97] transition-all cursor-pointer group touch-manipulation">
                   <div className={`flex flex-col items-start gap-1`}>
                     <h2 className="text-lg font-black group-hover:text-blue-400 transition-colors" dir="ltr">{lang.name}</h2>
                     <p className="text-[10px] text-slate-500 font-bold">{t.langDesc[lang.id as keyof typeof t.langDesc]}</p>
@@ -1062,42 +1095,42 @@ const App: React.FC = () => {
               ))}
             </div>
           </div>
-        </header>
+        </main>
         {incomingChallenge && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div className="bg-[#0a0f1e] border border-indigo-500/30 rounded-[3rem] p-8 w-full max-sm shadow-[0_0_80px_rgba(99,102,241,0.2)] text-center animate-in zoom-in-95 duration-300">
                <UserAvatar name={incomingChallenge.hostName} size="w-24 h-24" textClassName="text-4xl" /><h2 className="text-2xl font-black mb-2">{t.newChallenge}</h2><p className="text-slate-400 text-sm mb-6">{t.wantsToChallenge} <span className="text-indigo-400 font-black">{incomingChallenge.selectedLanguage.toUpperCase()}</span></p>
                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 mb-8 flex items-center justify-between"><div className="text-right"><span className="text-[10px] text-slate-500 font-black uppercase block">{t.stake}</span><span className="text-xl font-mono font-black text-yellow-500">{incomingChallenge.betAmount}</span></div><Coins className="w-6 h-6 text-yellow-500" /></div>
-               <div className="grid grid-cols-2 gap-3"><button onClick={handleAcceptChallenge} className="bg-green-600 hover:bg-green-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-green-900/20"><Check className="w-5 h-5" /> {t.accept}</button><button onClick={handleDeclineChallenge} className="bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 py-4 rounded-2xl font-black text-red-500 flex items-center justify-center gap-2 active:scale-95 transition-all"><X className="w-5 h-5" /> {t.decline}</button></div>
+               <div className="grid grid-cols-2 gap-3"><button onClick={handleAcceptChallenge} className="bg-green-600 hover:bg-green-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-green-900/20 touch-manipulation"><Check className="w-5 h-5" /> {t.accept}</button><button onClick={handleDeclineChallenge} className="bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 py-4 rounded-2xl font-black text-red-500 flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation"><X className="w-5 h-5" /> {t.decline}</button></div>
             </div>
           </div>
         )}
         {showFriendSetup && (
           <div className="fixed inset-0 bg-black/95 z-[1500] flex items-center justify-center p-4 animate-in fade-in duration-300 backdrop-blur-md">
              <div className="bg-[#0a0f1e] border border-indigo-500/30 rounded-[3rem] p-8 w-full max-w-lg shadow-[0_0_80px_rgba(99,102,241,0.15)] relative animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto no-scrollbar">
-                <button onClick={() => setShowFriendSetup(false)} className="absolute top-6 left-6 p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors"><XIcon className="w-5 h-5" /></button>
+                <button onClick={() => setShowFriendSetup(false)} className="absolute top-6 left-6 p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors active:scale-75"><XIcon className="w-5 h-5" /></button>
                 <h2 className="text-3xl font-black text-center mb-8">{t.friendChallengeTitle}</h2>
                 <form onSubmit={handleSearchFriend} className="flex items-center gap-2 mb-6">
                    <div className="relative flex-1"><Search className={`absolute ${uiLang === 'ar' ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500`} /><input type="text" maxLength={6} placeholder={t.enterFriendCode} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.replace(/\D/g, ''))} className={`w-full bg-[#0f172a] border border-indigo-500/30 rounded-2xl ${uiLang === 'ar' ? 'pr-12' : 'pl-12'} py-4 font-mono font-black text-blue-400 text-lg tracking-[0.2em] outline-none`} /></div>
-                   <button type="submit" disabled={isSearching || searchQuery.length < 6} className="bg-indigo-600 p-4 rounded-2xl disabled:opacity-30 active:scale-95 shadow-lg"><ArrowRight className={`w-6 h-6 ${uiLang === 'ar' ? 'rotate-180' : ''}`} /></button>
+                   <button type="submit" disabled={isSearching || searchQuery.length < 6} className="bg-indigo-600 p-4 rounded-2xl disabled:opacity-30 active:scale-90 shadow-lg transition-all"><ArrowRight className={`w-6 h-6 ${uiLang === 'ar' ? 'rotate-180' : ''}`} /></button>
                 </form>
                 {searchResult && (
-                  <div className="space-y-8"><div className="bg-indigo-600/5 border border-indigo-500/20 rounded-[2rem] p-6 flex flex-col items-center gap-4 text-center"><UserAvatar name={searchResult.name} size="w-20 h-20" textClassName="text-3xl" /><h3 className="text-xl font-black">{searchResult.name}</h3></div><section><h3 className="text-indigo-400 font-black text-sm uppercase mb-4">{t.selectFriendLanguage}</h3><div className="grid grid-cols-2 gap-3">{LANGUAGES.map(lang => (<button key={lang.id} onClick={() => setFriendLang(lang.id)} className={`p-4 rounded-2xl border-2 font-black transition-all ${friendLang === lang.id ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-[#0f172a] border-white/5 text-slate-500'}`}>{lang.name}</button>))}</div></section><section><h3 className="text-indigo-400 font-black text-sm uppercase mb-4">{t.selectStakes}</h3><div className="bg-[#0f172a] border border-white/5 p-6 rounded-[2rem] flex items-center justify-between"><button onClick={() => setFriendStakes(Math.max(200, friendStakes - 100))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center font-black text-xl">-</button><span className="text-3xl font-mono font-black text-yellow-500">{friendStakes}</span><button onClick={() => setFriendStakes(friendStakes + 100)} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center font-black text-xl">+</button></div></section><button onClick={handleStartFriendChallenge} className="w-full bg-indigo-600 py-6 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-3 active:scale-95 shadow-lg"><Send className="w-6 h-6" /> {t.startFriendChallenge}</button></div>
+                  <div className="space-y-8"><div className="bg-indigo-600/5 border border-indigo-500/20 rounded-[2rem] p-6 flex flex-col items-center gap-4 text-center"><UserAvatar name={searchResult.name} size="w-20 h-20" textClassName="text-3xl" /><h3 className="text-xl font-black">{searchResult.name}</h3></div><section><h3 className="text-indigo-400 font-black text-sm uppercase mb-4">{t.selectFriendLanguage}</h3><div className="grid grid-cols-2 gap-3">{LANGUAGES.map(lang => (<button key={lang.id} onClick={() => setFriendLang(lang.id)} className={`p-4 rounded-2xl border-2 font-black transition-all active:scale-[0.96] touch-manipulation ${friendLang === lang.id ? 'bg-indigo-600 border-indigo-400 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'bg-[#0f172a] border-white/5 text-slate-500'}`}>{lang.name}</button>))}</div></section><section><h3 className="text-indigo-400 font-black text-sm uppercase mb-4">{t.selectStakes}</h3><div className="bg-[#0f172a] border border-white/5 p-6 rounded-[2rem] flex items-center justify-between"><button onClick={() => setFriendStakes(Math.max(200, friendStakes - 100))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center font-black text-xl active:scale-75 transition-transform">-</button><span className="text-3xl font-mono font-black text-yellow-500">{friendStakes}</span><button onClick={() => setFriendStakes(friendStakes + 100)} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center font-black text-xl active:scale-75 transition-transform">+</button></div></section><button onClick={handleStartFriendChallenge} className="w-full bg-indigo-600 py-6 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-3 active:scale-95 shadow-lg touch-manipulation transition-all"><Send className="w-6 h-6" /> {t.startFriendChallenge}</button></div>
                 )}
              </div>
           </div>
         )}
         {gameMode === 'friend' && !multiplayerData && (
           <div className="fixed inset-0 bg-[#020617] z-[2000] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
-             <header className="absolute top-10 left-0 right-0 px-8 flex justify-between items-center"><button onClick={() => setGameMode(null)} className="p-4 bg-[#0a0f1e] rounded-2xl border border-white/5"><ArrowLeft className="w-6 h-6" /></button></header>
-             <Loader2 className="w-32 h-32 text-indigo-500 animate-spin mb-10" /><h2 className="text-3xl font-black mb-4">{t.waitingForFriend}</h2><p className="text-slate-500 font-bold mb-8">{t.shareCodeNote}</p><div className="bg-[#0a0f1e] border border-white/5 p-8 rounded-[3rem] space-y-4"><div className="text-5xl font-mono font-black text-indigo-400">{playerCode}</div></div>
+             <header className="absolute top-10 left-0 right-0 px-8 flex justify-between items-center"><button onClick={() => setGameMode(null)} className="p-4 bg-[#0a0f1e] rounded-2xl border border-white/5 active:scale-75 transition-transform"><ArrowLeft className="w-6 h-6" /></button></header>
+             <Loader2 className="w-32 h-32 text-indigo-500 animate-spin mb-10" /><h2 className="text-3xl font-black mb-4">{t.waitingForFriend}</h2><p className="text-slate-500 font-bold mb-8">{t.shareCodeNote}</p><div className="bg-[#0a0f1e] border border-white/5 p-8 rounded-[3rem] space-y-4"><div className="text-5xl font-mono font-black text-indigo-400 tracking-widest">{playerCode}</div></div>
           </div>
         )}
         {showLeaderboard && (
           <div className="fixed inset-0 bg-black/98 z-[500] flex items-center justify-center p-4 animate-in fade-in duration-300">
              <div className="bg-[#0a0f1e] border border-white/10 rounded-[3rem] p-8 w-full max-w-lg h-[80vh] flex flex-col shadow-2xl">
-                <div className="flex items-center justify-between mb-8"><h2 className="text-2xl font-black flex items-center gap-3"><Medal className="w-8 h-8 text-yellow-500" /> {t.leaderboardTitle}</h2><button onClick={() => setShowLeaderboard(false)} className="p-3 bg-white/5 rounded-full"><XIcon className="w-5 h-5" /></button></div>
-                <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">{getFilteredLeaderboard().map((entry, idx) => (<div key={idx} className="bg-[#0f172a] border border-white/5 p-4 rounded-3xl flex items-center justify-between" onClick={() => { setShowLeaderboard(false); setViewedProfile(entry.name); }}><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${idx === 0 ? 'bg-yellow-500 text-black' : 'bg-white/5 text-slate-500'}`}>{idx + 1}</div><div className="flex flex-col"><span className="font-black text-white">{entry.name}</span><span className="text-[10px] text-slate-500 uppercase">{entry.language}</span></div></div><span className="text-yellow-500 font-mono font-black">{entry.scoreFormatted}</span></div>))}</div>
+                <div className="flex items-center justify-between mb-8"><h2 className="text-2xl font-black flex items-center gap-3"><Medal className="w-8 h-8 text-yellow-500" /> {t.leaderboardTitle}</h2><button onClick={() => setShowLeaderboard(false)} className="p-3 bg-white/5 rounded-full active:scale-75 transition-transform"><XIcon className="w-5 h-5" /></button></div>
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">{getFilteredLeaderboard().map((entry, idx) => (<div key={idx} className="bg-[#0f172a] border border-white/5 p-4 rounded-3xl flex items-center justify-between active:scale-[0.98] transition-all" onClick={() => { setShowLeaderboard(false); setViewedProfile(entry.name); }}><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${idx === 0 ? 'bg-yellow-500 text-black' : 'bg-white/5 text-slate-500'}`}>{idx + 1}</div><div className="flex flex-col"><span className="font-black text-white">{entry.name}</span><span className="text-[10px] text-slate-500 uppercase">{entry.language}</span></div></div><span className="text-yellow-500 font-mono font-black">{entry.scoreFormatted}</span></div>))}</div>
              </div>
           </div>
         )}
@@ -1105,98 +1138,176 @@ const App: React.FC = () => {
     );
   }
 
+  // Fix: Use type assertion for gameMode to avoid accidental narrowing in logic.
+  const opponentAnswersHistory = (gameMode as string) === 'battle' ? aiAnswersHistory : (isMultiplayer ? (isHost ? (multiplayerData?.opponentAnswers || []) : (multiplayerData?.hostAnswers || [])) : []);
+  const opponentName = (gameMode as string) === 'battle' ? t.geminiBot : (isHost ? multiplayerData?.opponentName : multiplayerData?.hostName);
+
   return (
-    <div className={`min-h-screen bg-[#020617] text-white font-['Tajawal'] p-6 overflow-x-hidden relative`} dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
-       <div className="max-w-2xl mx-auto space-y-4">
-          <header className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-               <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center font-black text-lg shadow-lg">{isMultiplayer ? multiplayerData.totalTurns : gameState.currentQuestionIndex + 1}</div>
-               <div className={uiLang === 'ar' ? 'text-right' : 'text-left'}>
-                  <h3 className="font-black text-md leading-none uppercase tracking-tight">{gameMode === 'battle' ? 'AI BATTLE' : gameMode === 'friend' ? 'BATTLE ARENA' : gameState.currentLanguage}</h3>
-                  <span className="text-[10px] text-slate-500 font-mono font-bold tracking-widest uppercase">{isMultiplayer ? `${t.turnCount} ${multiplayerData.totalTurns}/${MAX_TURNS}` : `${t.stage} ${gameState.currentStage}`}</span>
-               </div>
-            </div>
-            {(gameMode === 'battle' || gameMode === 'friend') && (
-               <div className="flex flex-col items-center gap-1 flex-1 px-8">
-                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden flex">
-                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${(gameMode === 'battle' ? battleProgress.user : friendProgress.me) / (gameMode === 'battle' ? BATTLE_TARGET : (MAX_TURNS/2)) * 100}%` }}></div>
-                    <div className="h-full bg-red-500 transition-all duration-500 ml-auto" style={{ width: `${(gameMode === 'battle' ? battleProgress.ai : friendProgress.him) / (gameMode === 'battle' ? BATTLE_TARGET : (MAX_TURNS/2)) * 100}%` }}></div>
-                  </div>
-               </div>
-            )}
-            <div className="bg-[#0a0f1e] border-2 border-white/5 px-4 py-3 rounded-xl flex items-center gap-2"><Timer className={`w-5 h-5 ${gameState.timeLeft < 7 ? 'text-red-500 animate-pulse' : 'text-blue-500'}`} /><span className="text-2xl font-mono font-black">{gameState.timeLeft}</span></div>
+    <div className={`min-h-screen bg-[#020617] text-white font-['Tajawal'] flex flex-col p-6 overflow-hidden relative`} dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
+       <div className="max-w-2xl mx-auto w-full flex flex-col h-full flex-1 gap-6">
+          <header className="w-full bg-[#0a0f1e]/40 backdrop-blur-xl border border-white/5 p-4 rounded-[2.5rem] flex items-center justify-between flex-shrink-0 shadow-xl">
+             <div className="flex items-center gap-3 flex-1 min-w-0">
+                <UserAvatar name={opponentName} size="w-12 h-12" />
+                <div className="text-right min-w-0">
+                  <span className="text-[10px] text-slate-500 font-black uppercase block leading-none mb-1">{t.opponent}</span>
+                  <span className="text-sm font-black text-white truncate max-w-[80px] block">{opponentName}</span>
+                  {(isMultiplayer || (gameMode as string) === 'battle') && (
+                    <div className="flex gap-1 mt-1">
+                      {[...Array(10)].map((_, i) => {
+                        const res = opponentAnswersHistory[i];
+                        let bgColor = "bg-white/10";
+                        let shadow = "";
+                        if (res === true) { bgColor = "bg-green-500"; shadow = "shadow-[0_0_8px_#22c55e]"; }
+                        else if (res === false) { bgColor = "bg-red-500"; shadow = "shadow-[0_0_8px_#ef4444]"; }
+                        return <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${bgColor} ${shadow}`} />;
+                      })}
+                    </div>
+                  )}
+                </div>
+             </div>
+             <div className="text-center flex-1 px-2 border-x border-white/5 min-w-0">
+                <h3 className="font-black text-xs text-blue-400 uppercase leading-tight truncate mb-1">{gameState.currentLanguage}</h3>
+                <div className="flex items-center justify-center gap-1.5">
+                   <span className="text-[10px] text-slate-400 font-black uppercase leading-none">{t.turnCount}</span>
+                   <span className="text-[10px] text-white font-mono font-black leading-none">{(gameMode as string) === 'battle' ? battleTurn : (isMultiplayer ? multiplayerData?.totalTurns : gameState.currentQuestionIndex + 1)}/{MAX_TURNS}</span>
+                </div>
+             </div>
+             <div className="flex-1 flex justify-end">
+                <div className={`relative w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${gameState.timeLeft < 5 ? 'border-red-500 shadow-[0_0_20px_#ef4444] animate-pulse bg-red-500/20' : 'border-blue-500/20 bg-blue-500/5'}`}>
+                   <span className={`text-2xl font-mono font-black ${gameState.timeLeft < 5 ? 'text-red-500' : 'text-white'}`}>{gameState.timeLeft}</span>
+                </div>
+             </div>
           </header>
-          <div className="bg-[#0a0f1e] border border-white/5 rounded-[2.5rem] p-6 md:p-10 shadow-2xl min-h-[420px] flex flex-col justify-center relative overflow-hidden">
-            {isLoading || isPreparingQuestions ? (
-               <div className="text-center space-y-4">
-                  <Loader2 className="w-14 h-14 text-blue-500 animate-spin mx-auto" />
-                  {isPreparingQuestions && <p className="text-blue-400 font-black animate-pulse">{t.preparingMatch}</p>}
-               </div>
-            ) : !isMyTurn ? (
-              <div className="flex flex-col items-center gap-8 py-10">
-                <Hourglass className="w-24 h-24 text-blue-500 animate-bounce" />
-                <div className="text-center space-y-2">
-                  <h2 className="text-3xl font-black text-blue-400">{t.waitingTurn}</h2>
-                  <p className="text-slate-500 font-bold">{t.turnCount}: {multiplayerData.totalTurns} / {MAX_TURNS}</p>
+
+          <div className="flex-1 bg-[#0a0f1e] border border-blue-500/20 rounded-[2.5rem] shadow-2xl relative overflow-hidden flex flex-col">
+            <div className="flex-shrink-0 bg-blue-500/5 px-6 py-4 border-b border-white/5 flex items-center justify-between">
+              <div className="flex gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div><div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50"></div><div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div></div>
+              <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-[0.2em]">{gameMode?.toUpperCase()} MODE</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto no-scrollbar p-6 md:p-8 space-y-6">
+              {isLoading || isPreparingQuestions || aiStatus === 'thinking' ? (
+                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                    <Loader2 className="w-14 h-14 text-blue-500 animate-spin mx-auto" />
+                    {isPreparingQuestions && <p className="text-blue-400 font-black animate-pulse">{t.preparingMatch}</p>}
+                    {aiStatus === 'thinking' && <p className="text-blue-400 font-black animate-pulse">{t.thinking}</p>}
+                 </div>
+              ) : !isMyTurn ? (
+                <div className="h-full flex flex-col items-center justify-center gap-8 py-10">
+                  <Hourglass className="w-24 h-24 text-blue-500 animate-bounce" />
+                  <div className="text-center space-y-2">
+                    <h2 className="text-3xl font-black text-blue-400">{t.waitingTurn}</h2>
+                    <p className="text-slate-500 font-bold">{t.turnCount}: {(gameMode as string) === 'battle' ? battleTurn : multiplayerData.totalTurns} / {MAX_TURNS}</p>
+                  </div>
                 </div>
-              </div>
-            ) : currentQuestion ? (
-              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-500">
-                <h2 className={`text-xl md:text-2xl font-black leading-tight ${uiLang === 'ar' ? 'text-right' : 'text-left'}`}>{currentQuestion.text}</h2>
-                {currentQuestion.codeSnippet && (<div className="bg-black/40 rounded-[1.2rem] p-6 border border-white/5 font-mono text-xs text-blue-400 overflow-x-auto shadow-inner" dir="ltr"><pre><code>{currentQuestion.codeSnippet}</code></pre></div>)}
-                <div className="grid gap-3">
-                  {currentQuestion.options.map((opt, idx) => { 
-                    const isSelected = selectedOption === idx; const isCorrect = idx === currentQuestion.correctAnswerIndex; 
-                    let btnClass = `w-full ${uiLang === 'ar' ? 'text-right' : 'text-left'} p-5 rounded-3xl border-2 transition-all font-bold flex items-center justify-between text-md ${uiLang === 'ar' ? 'flex-row' : 'flex-row-reverse'}`; 
-                    if (selectedOption === null) btnClass += " bg-[#0f172a] border-white/5 hover:border-blue-500 active:scale-95";
-                    else if (isSelected && isCorrect) btnClass += " bg-green-500/20 border-green-500 text-green-400"; else if (isSelected && !isCorrect) btnClass += " bg-red-500/20 border-red-500 text-red-400"; 
-                    else if (isCorrect) btnClass += " bg-green-500/10 border-green-500/40 text-green-400"; else btnClass += " bg-slate-800/20 border-transparent text-slate-600 opacity-40"; 
-                    return (<button key={idx} disabled={selectedOption !== null || !isMyTurn} onClick={() => handleOptionClick(idx)} className={btnClass}><div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-xs border border-white/10">{String.fromCharCode(65 + idx)}</div><span className="flex-1 px-4">{opt}</span></button>); 
-                  })}
+              ) : currentQuestion ? (
+                <div className="animate-in fade-in slide-in-from-bottom-6 duration-500 space-y-6">
+                  <div className="space-y-4">
+                    <h2 className={`text-xl md:text-2xl font-black leading-tight text-white ${uiLang === 'ar' ? 'text-right' : 'text-left'}`}>{currentQuestion.text}</h2>
+                    {currentQuestion.codeSnippet && (
+                      <div className="group relative">
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-2xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                        <div className="relative bg-black/60 rounded-[1.2rem] p-5 border border-white/5 font-mono text-sm text-blue-300 overflow-x-auto shadow-inner" dir="ltr"><pre><code>{currentQuestion.codeSnippet}</code></pre></div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid gap-3">
+                    {currentQuestion.options.map((opt, idx) => { 
+                      const isSelected = selectedOption === idx; const isCorrect = idx === currentQuestion.correctAnswerIndex; 
+                      let btnClass = `w-full ${uiLang === 'ar' ? 'text-right' : 'text-left'} p-5 rounded-[1.5rem] border-2 transition-all duration-300 font-bold flex items-center justify-between text-md ${uiLang === 'ar' ? 'flex-row' : 'flex-row-reverse'} touch-manipulation group`; 
+                      if (selectedOption === null) btnClass += " bg-[#0f172a] border-white/5 active:scale-[0.97] active:border-blue-500 active:bg-blue-500/10 hover:border-blue-500/40";
+                      else if (isSelected && isCorrect) btnClass += " bg-green-500/20 border-green-500 text-green-400 shadow-[0_0_20px_rgba(34,197,94,0.2)]"; 
+                      else if (isSelected && !isCorrect) btnClass += " bg-red-500/20 border-red-500 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]"; 
+                      else if (isCorrect) btnClass += " bg-green-500/10 border-green-500/40 text-green-400"; 
+                      else btnClass += " bg-slate-800/10 border-transparent text-slate-700 opacity-40 grayscale-[0.5]"; 
+                      return (
+                        <button key={idx} disabled={selectedOption !== null || !isMyTurn} onClick={() => handleOptionClick(idx)} className={btnClass}>
+                          <div className="w-10 h-10 rounded-xl bg-white/5 flex flex-shrink-0 items-center justify-center text-sm border border-white/10 font-black group-active:scale-90 transition-transform">{String.fromCharCode(65 + idx)}</div>
+                          <span className="flex-1 px-5">{opt}</span>
+                        </button>
+                      ); 
+                    })}
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+            <div className="flex-shrink-0 bg-blue-500/5 px-6 py-3 border-t border-white/5 flex items-center justify-between">
+               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t.prizePool}</span>
+               <span className="text-lg font-mono font-black text-yellow-500">{gameState.score}</span>
+            </div>
           </div>
-          <button onClick={() => { if(isMultiplayer) remove(ref(database, `challenges/${playerCode}`)); setGameMode(null); }} className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl text-red-500 flex items-center justify-center active:scale-95"><LogOut className="w-6 h-6" /></button>
+          <button onClick={() => setShowExitConfirm(true)} className="flex-shrink-0 bg-red-500/10 border border-red-500/20 p-5 rounded-[1.8rem] text-red-500 flex items-center justify-center active:scale-90 transition-all touch-manipulation shadow-lg mb-2"><LogOut className="w-6 h-6" /></button>
        </div>
+
+       {showExitConfirm && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-2xl z-[5000] flex items-center justify-center p-6 animate-in fade-in duration-300">
+             <div className="bg-[#0a0f1e] border-4 border-red-500/50 rounded-[3.5rem] p-10 text-center max-w-md w-full shadow-[0_0_100px_rgba(239,68,68,0.3)] relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-2 bg-red-500 animate-pulse"></div>
+                <AlertTriangle className="w-24 h-24 text-red-500 mx-auto mb-6 animate-bounce" />
+                <h2 className="text-3xl font-black mb-4 text-white leading-tight uppercase italic">{t.withdrawalConfirm}</h2>
+                <p className={`text-red-400 font-bold mb-10 text-lg ${uiLang === 'ar' ? 'text-right' : 'text-left'}`}>{t.withdrawalWarning}</p>
+                <div className="space-y-4">
+                  <button onClick={handleConfirmWithdrawal} className="w-full bg-red-600 py-6 rounded-[2.5rem] font-black text-xl text-white shadow-xl shadow-red-900/20 active:scale-95 transition-all border-b-4 border-red-800 uppercase italic tracking-tighter flex items-center justify-center gap-3">
+                    <Skull className="w-6 h-6" /> {t.withdrawalConfirm}
+                  </button>
+                  <button onClick={() => setShowExitConfirm(false)} className="w-full bg-[#0f172a] border border-white/10 py-5 rounded-[2.5rem] font-black text-lg text-slate-400 active:scale-95 transition-all">
+                    {t.cancel}
+                  </button>
+                </div>
+             </div>
+          </div>
+       )}
+
        {showRevive && (
           <div className="fixed inset-0 bg-black/90 backdrop-blur-2xl z-[2000] flex items-center justify-center p-6" dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
-             <div className="bg-[#0a0f1e] border border-yellow-500/30 rounded-[3.5rem] p-8 text-center max-w-md w-full"><MascotIcon mood="upset" /><h2 className="text-3xl font-black mb-2 text-yellow-500">{t.reviveTitle}</h2><p className="text-slate-400 font-bold text-sm mb-8">{t.reviveSub}</p>
+             <div className="bg-[#0a0f1e] border border-yellow-500/30 rounded-[3.5rem] p-8 text-center max-w-md w-full animate-in zoom-in-95 duration-300 shadow-[0_0_100px_rgba(234,179,8,0.15)]"><MascotIcon mood="upset" /><h2 className="text-3xl font-black mb-2 text-yellow-500">{t.reviveTitle}</h2><p className="text-slate-400 font-bold text-sm mb-8">{t.reviveSub}</p>
                 <div className="space-y-4">
-                   <button onClick={handleReviveWithCoins} disabled={totalCoins < REVIVE_COST} className="w-full bg-[#0f172a] border-2 border-blue-600/30 p-6 rounded-[2rem] flex flex-col items-center gap-2"><div className="flex items-center gap-3"><Coins className="w-6 h-6 text-yellow-500" /><span className="text-lg font-black text-white">{t.continueWithCoins}</span></div><span className="text-[10px] text-slate-500 font-black">{totalCoins.toLocaleString()} / {REVIVE_COST.toLocaleString()}</span></button>
-                   <button onClick={handleReviveWithAd} className="w-full bg-blue-600 p-6 rounded-[2rem] flex items-center justify-center gap-3 font-black text-lg"><PlayCircle className="w-6 h-6" /> {t.continueWithAd}</button>
-                   <button onClick={handleGameOver} className="w-full text-slate-500 font-bold py-2">{t.returnMenu}</button>
+                   <button onClick={handleReviveWithCoins} disabled={totalCoins < REVIVE_COST} className="w-full bg-[#0f172a] border-2 border-blue-600/30 p-6 rounded-[2rem] flex flex-col items-center gap-2 active:scale-95 transition-all touch-manipulation"><div className="flex items-center gap-3"><Coins className="w-6 h-6 text-yellow-500" /><span className="text-lg font-black text-white">{t.continueWithCoins}</span></div><span className="text-[10px] text-slate-500 font-black">{totalCoins.toLocaleString()} / {REVIVE_COST.toLocaleString()}</span></button>
+                   <button onClick={handleReviveWithAd} className="w-full bg-blue-600 p-6 rounded-[2rem] flex items-center justify-center gap-3 font-black text-lg active:scale-95 transition-all touch-manipulation shadow-lg shadow-blue-900/20"><PlayCircle className="w-6 h-6" /> {t.continueWithAd}</button>
+                   <button onClick={handleGameOver} className="w-full text-slate-500 font-bold py-2 active:scale-90 transition-transform">{t.returnMenu}</button>
                 </div>
              </div>
           </div>
        )}
        {gameState.isGameOver && (
           <div className="fixed inset-0 bg-black/98 backdrop-blur-3xl z-[600] flex justify-center p-4 py-10 overflow-y-auto" dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
-             <div className="bg-[#0a0f1e] border border-white/10 rounded-[3rem] p-8 text-center max-w-md w-full h-fit my-auto">
+             <div className="bg-[#0a0f1e] border border-white/10 rounded-[3rem] p-8 text-center max-w-md w-full h-fit my-auto animate-in zoom-in-95 duration-300">
                 <MascotIcon mood="angry" /><h2 className="text-3xl font-black mb-4">{matchResultState === 'loss' ? t.lostAgainstFriend : t.gameOver}</h2>
-                <div className="bg-red-500/10 p-4 rounded-2xl mb-6 flex justify-between items-center border border-red-500/20"><span className="font-black text-[10px] uppercase tracking-widest">{t.penalty}</span><span className="text-xl font-mono font-black text-red-500">-{matchResultState === 'loss' ? 0 : (gameMode === 'daily' ? DAILY_LOSS_PENALTY : LOSS_PENALTY)}</span></div>
-                <button onClick={() => { setGameMode(null); setGameState(prev => ({ ...prev, isGameOver: false })); }} className="w-full bg-slate-800 py-5 rounded-[2rem] font-black text-lg">{t.returnMenu}</button>
+                <div className="bg-red-500/10 p-4 rounded-2xl mb-6 flex justify-between items-center border border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.1)] animate-pulse">
+                  <div className="flex flex-col items-start"><span className="font-black text-[10px] uppercase tracking-widest opacity-50">{t.penalty}</span><span className="text-2xl font-mono font-black text-red-500">-{matchResultState === 'loss' ? 0 : currentCalculatedPenalty}</span></div>
+                  <Skull className="w-8 h-8 text-red-500/50" />
+                </div>
+                <button onClick={() => { setGameMode(null); setGameState(prev => ({ ...prev, isGameOver: false })); }} className="w-full bg-slate-800 py-5 rounded-[2.5rem] font-black text-lg transition-all duration-200 active:scale-95 active:bg-slate-700 active:ring-2 active:ring-white/10 touch-manipulation">{t.returnMenu}</button>
              </div>
           </div>
        )}
        {gameState.isGameWon && (
-          <div className="fixed inset-0 bg-black/95 z-[600] flex justify-center p-4 py-10 overflow-y-auto" dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
-             <div className="bg-[#0a0f1e] border border-green-500/30 rounded-[3rem] p-8 text-center max-w-md w-full h-fit my-auto">
-                <PartyPopper className="w-20 h-20 text-yellow-500 mx-auto mb-4 animate-bounce" />
-                <h2 className="text-4xl font-black mb-4 text-green-500">{matchResultState === 'win' ? t.wonAgainstFriend : t.victory}</h2>
-                <p className="text-slate-400 font-bold mb-6">{matchResultState === 'win' ? t.payoutWinner.replace('{amount}', gameState.score) : ""}</p>
-                <div className="bg-green-500/10 p-6 rounded-[2rem] mb-8 flex justify-between items-center border border-green-500/20"><div className={uiLang === 'ar' ? 'text-right' : 'text-left'}><span className="text-slate-500 uppercase font-black text-[10px]">{t.winnings}</span><div className="text-3xl font-mono font-black text-yellow-500 mt-1">{gameState.score}</div></div><Trophy className="w-10 h-10 text-yellow-500" /></div>
-                <button onClick={() => { setGameMode(null); setGameState(prev => ({ ...prev, isGameWon: false })); }} className="w-full bg-green-600 py-6 rounded-[2.5rem] font-black text-xl active:scale-95">{t.claimReward}</button>
+          <div className="fixed inset-0 bg-black/95 z-[6000] flex justify-center p-4 py-10 overflow-y-auto backdrop-blur-3xl" dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
+             <div className="bg-[#0a0f1e] border border-green-500/30 rounded-[3rem] p-10 text-center max-w-md w-full h-fit my-auto animate-in zoom-in-95 duration-500 relative overflow-hidden shadow-[0_0_100px_rgba(34,197,94,0.2)]">
+                <div className="absolute -top-20 -left-20 w-40 h-40 bg-green-500/10 rounded-full blur-3xl"></div>
+                <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl"></div>
+                
+                <div className="relative z-10">
+                   <PartyPopper className="w-24 h-24 text-yellow-500 mx-auto mb-6 animate-bounce" />
+                   <h2 className="text-4xl font-black mb-2 text-green-500 tracking-tighter uppercase italic">{matchResultState === 'win' ? t.wonAgainstFriend : t.victory}</h2>
+                   
+                   <div className="my-8 relative inline-block">
+                     <UserAvatar name={playerName} size="w-32 h-32" textClassName="text-5xl" />
+                     <div className="absolute -bottom-2 -right-2 bg-yellow-500 rounded-full p-2 border-4 border-[#0a0f1e] animate-pulse"><Crown className="w-6 h-6 text-black" /></div>
+                   </div>
+
+                   <p className="text-slate-400 font-bold mb-6 text-sm">{matchResultState === 'win' ? t.payoutWinner.replace('{amount}', gameState.score) : ""}</p>
+                   <div className="bg-green-500/10 p-6 rounded-[2.5rem] mb-10 flex justify-between items-center border border-green-500/20 shadow-lg shadow-green-900/10 group"><div className={uiLang === 'ar' ? 'text-right' : 'text-left'}><span className="text-slate-500 uppercase font-black text-[10px] tracking-widest">{t.winnings}</span><div className="text-4xl font-mono font-black text-yellow-500 mt-1 drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">{gameState.score}</div></div><Trophy className="w-12 h-12 text-yellow-500 group-hover:scale-110 transition-transform duration-500" /></div>
+                   <button onClick={() => { setGameMode(null); setGameState(prev => ({ ...prev, isGameWon: false })); setMatchResultState(null); }} className="w-full bg-green-600 py-6 rounded-[2.5rem] font-black text-xl active:scale-95 active:brightness-110 transition-all touch-manipulation shadow-xl shadow-green-900/20 border-b-4 border-green-800">{t.claimReward}</button>
+                </div>
              </div>
           </div>
        )}
        {matchResultState === 'draw' && (
           <div className="fixed inset-0 bg-black/95 z-[600] flex justify-center p-4 py-10 overflow-y-auto" dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
              <div className="bg-[#0a0f1e] border border-blue-500/30 rounded-[3rem] p-8 text-center max-w-md w-full h-fit my-auto">
-                <Users className="w-20 h-20 text-blue-500 mx-auto mb-4" />
-                <h2 className="text-4xl font-black mb-4 text-blue-500">{t.draw}</h2>
-                <p className="text-slate-400 font-bold mb-8">{t.drawSub}</p>
-                <button onClick={() => { setGameMode(null); setMatchResultState(null); }} className="w-full bg-blue-600 py-6 rounded-[2.5rem] font-black text-xl active:scale-95">{t.returnMenu}</button>
+                <Users className="w-20 h-20 text-blue-500 mx-auto mb-4" /><h2 className="text-4xl font-black mb-4 text-blue-500">{t.draw}</h2><p className="text-slate-400 font-bold mb-8">{t.drawSub}</p>
+                <button onClick={() => { setGameMode(null); setMatchResultState(null); }} className="w-full bg-blue-600 py-6 rounded-[2.5rem] font-black text-xl active:scale-95 active:bg-blue-500 transition-all touch-manipulation">{t.returnMenu}</button>
              </div>
           </div>
        )}
