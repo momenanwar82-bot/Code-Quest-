@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "656324462532",
+    "firebase_url": "https://code-quest-a3f47-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "code-quest-a3f47",
+    "storage_bucket": "code-quest-a3f47.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:656324462532:android:c28c1dbc8d55ee27c68691",
+        "android_client_info": {
+          "package_name": "com.codequest.millionaire"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBydZiHlkUUFu7JqZHCXqaIFMu-4Y3NH_Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
