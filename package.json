@@ -1,8 +1,7 @@
-
 {
   "name": "code-quest-millionaire",
-  "version": "1.0.0",
-  "description": "High-stakes programming quiz game",
+  "version": "1.0.1",
+  "description": "High-stakes programming quiz",
   "main": "index.tsx",
   "dependencies": {
     "@capacitor/android": "^6.0.0",
@@ -17,7 +16,7 @@
     "@capacitor/cli": "^6.0.0"
   },
   "scripts": {
-    "build": "echo 'Web build is ready'",
+    "build": "echo \"Web build is ready\"",
     "sync": "npx cap sync android"
   }
 }
