@@ -25,13 +25,18 @@ jobs:
 
       - name: Build Web Assets
         run: |
-          npm run build || echo "Build skipped or no-op"
-          # Ensure capacitor is synced
+          # التأكد من إنشاء مجلد dist حتى لو لم يوجد كود بناء
+          mkdir -p dist
+          npm run build || echo "Build skipped"
+          # أمر حيوي لربط ملفات الويب بالأندرويد
+          npx cap copy android
           npx cap sync android
 
       - name: Build Android Debug APK
         run: |
           cd android
+          # تنظيف البناء القديم لضمان عدم حدوث تضارب
+          ./gradlew clean
           chmod +x gradlew
           ./gradlew assembleDebug
 
