@@ -1,8 +1,7 @@
-
 {
   "appId": "com.codequest.millionaire",
   "appName": "Code Quest",
-  "webDir": ".",
+  "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
     "androidScheme": "https"
