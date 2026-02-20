@@ -1,56 +1,30 @@
-
-plugins {
-    id 'com.android.application'
-    id 'com.google.gms.google-services'
-}
-
-android {
-    namespace "com.codequest.millionaire"
-    compileSdk 34
-
-    defaultConfig {
-        applicationId "com.codequest.millionaire"
-        minSdk 22
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        aaptOptions {
-             // Strings and other assets can be included here
+{
+  "project_info": {
+    "project_number": "656324462532",
+    "firebase_url": "https://code-quest-a3f47-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "code-quest-a3f47",
+    "storage_bucket": "code-quest-a3f47.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:656324462532:android:c28c1dbc8d55ee27c68691",
+        "android_client_info": {
+          "package_name": "com.codequest.millionaire"
         }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBydZiHlkUUFu7JqZHCXqaIFMu-4Y3NH_Y"
         }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
     }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
+  ],
+  "configuration_version": "1"
 }
-
-repositories {
-    google()
-    mavenCentral()
-}
-
-dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation project(':capacitor-android')
-    implementation project(':capacitor-cordova-android-plugins')
-
-    // Firebase dependencies requested
-    implementation platform('com.google.firebase:firebase-bom:33.1.0')
-    implementation 'com.google.firebase:firebase-database'
-
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-}
-
-apply from: 'capacitor.build.gradle'
