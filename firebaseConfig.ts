@@ -23,6 +23,7 @@ import {
   signOut
 } from "firebase/auth";
 import { getDatabase } from "firebase/database";
+import { UserStreak } from "./types";
 
 // الإعدادات المحدثة لضمان التوافق مع ملف google-services.json
 const firebaseConfig = {
@@ -149,6 +150,43 @@ export const saveScoreToFirestore = async (name: string, score: number, language
       timestamp: serverTimestamp()
     });
   } catch (e: any) {}
+};
+
+/**
+ * دالة لجلب بيانات الستريك اليومي للمستخدم
+ */
+export const getDailyStreak = async (name: string): Promise<UserStreak> => {
+  if (!name) return { lastClaimDate: null, consecutiveDays: 0 };
+  try {
+    const userRef = doc(db, "users", name.trim().toLowerCase());
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+      return {
+        lastClaimDate: data.lastClaimDate || null,
+        consecutiveDays: data.consecutiveDays || 0
+      };
+    }
+  } catch (e) {}
+  return { lastClaimDate: null, consecutiveDays: 0 };
+};
+
+/**
+ * دالة لتسجيل استلام الجائزة اليومية وتحديث الستريك
+ */
+export const claimDailyReward = async (name: string, newCoins: number, newStreak: number) => {
+  if (!name) return;
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const userRef = doc(db, "users", name.trim().toLowerCase());
+    await setDoc(userRef, {
+      coins: newCoins,
+      lastClaimDate: today,
+      consecutiveDays: newStreak,
+      lastActive: serverTimestamp()
+    }, { merge: true });
+    localStorage.setItem(`${LOCAL_COINS_KEY}_${name.trim().toLowerCase()}`, newCoins.toString());
+  } catch (e) {}
 };
 
 export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut };

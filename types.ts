@@ -53,3 +53,15 @@ export interface OpponentData {
   totalScore: number;
   isCorrect?: boolean;
 }
+
+export interface DailyReward {
+  day: number;
+  amount: number;
+  type: 'coins' | 'revive' | 'badge';
+  claimed: boolean;
+}
+
+export interface UserStreak {
+  lastClaimDate: string | null;
+  consecutiveDays: number;
+}

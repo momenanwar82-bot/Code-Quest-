@@ -1,7 +1,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Question, Difficulty, LeaderboardEntry } from './types';
-import { LANGUAGES, PRIZE_LADDERS, COINS_KEY, DAILY_CHALLENGE_KEY, DAILY_BONUS_AMOUNT, LEADERBOARD_KEY, INITIAL_MOCK_LEADERBOARD } from './constants';
+import { 
+  LANGUAGES, 
+  PRIZE_LADDERS, 
+  COINS_KEY, 
+  DAILY_CHALLENGE_KEY, 
+  DAILY_BONUS_AMOUNT, 
+  LEADERBOARD_KEY, 
+  INITIAL_MOCK_LEADERBOARD,
+  REWARD_SCHEDULE
+} from './constants';
 import { generateProgrammingQuestion } from './services/geminiService';
 import { AdService } from './services/adService';
 import { 
@@ -17,7 +26,9 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   onAuthStateChanged,
-  signOut
+  signOut,
+  getDailyStreak,
+  claimDailyReward
 } from './firebaseConfig';
 import { ref, update, set, onValue, remove, off, runTransaction } from "firebase/database";
 import { 
@@ -165,7 +176,14 @@ const translations = {
       cpp: "لغة الأنظمة والألعاب عالية الأداء",
       typescript: "النسخة المطورة والآمنة من جافا سكريبت",
       php: "لغة تطوير المواقع وقواعد البيانات"
-    }
+    },
+    dailyLoginTitle: "مكافأة الدخول اليومي",
+    dailyLoginSub: "عد كل يوم للحصول على مكافآت أكبر!",
+    dayLabel: "يوم",
+    claim: "استلام",
+    claimed: "تم الاستلام",
+    streakLabel: "ستريك {count} أيام",
+    rewardAdded: "تمت إضافة {amount} قطعة إلى محفظتك!"
   },
   en: {
     loginTitle: "Login",
@@ -284,7 +302,14 @@ const translations = {
       cpp: "High-performance language for systems and games",
       typescript: "Enhanced and secure version of JavaScript",
       php: "Language for website and database development"
-    }
+    },
+    dailyLoginTitle: "Daily Login Reward",
+    dailyLoginSub: "Return every day for bigger rewards!",
+    dayLabel: "Day",
+    claim: "Claim",
+    claimed: "Claimed",
+    streakLabel: "{count} Day Streak",
+    rewardAdded: "{amount} coins added to your wallet!"
   }
 };
 
@@ -403,6 +428,92 @@ const ProfilePage = ({ name, playerName, leaderboard, playerCode, totalCoins, t,
   );
 };
 
+// Daily Reward Modal Component
+const DailyRewardModal = ({ isOpen, onClose, t, streakData, onClaim, uiLang }: any) => {
+  if (!isOpen) return null;
+
+  const currentDay = (streakData.consecutiveDays % 7) || 7;
+  
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300">
+      <div className="w-full max-w-lg bg-[#0a0f1e] border border-blue-500/30 rounded-[3rem] p-8 relative overflow-hidden shadow-[0_0_50px_rgba(59,130,246,0.2)]">
+        {/* Decorative Background Elements */}
+        <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-600/10 rounded-full blur-3xl"></div>
+        
+        <div className="text-center relative z-10">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-600/20 rounded-3xl mb-6 border border-blue-500/30 shadow-lg shadow-blue-500/20">
+            <Calendar className="w-10 h-10 text-blue-400" />
+          </div>
+          
+          <h2 className="text-3xl font-black mb-2 tracking-tight text-white">{t.dailyLoginTitle}</h2>
+          <p className="text-slate-400 font-bold mb-8">{t.dailyLoginSub}</p>
+          
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-8">
+            {REWARD_SCHEDULE.map((reward) => {
+              const isToday = reward.day === currentDay;
+              const isPast = reward.day < currentDay;
+              const isFuture = reward.day > currentDay;
+              
+              return (
+                <div 
+                  key={reward.day}
+                  className={`flex flex-col items-center p-2 rounded-2xl border transition-all duration-300 ${
+                    isToday 
+                      ? 'bg-blue-600 border-blue-400 shadow-lg shadow-blue-600/40 scale-110 z-10' 
+                      : isPast 
+                        ? 'bg-green-500/10 border-green-500/30 opacity-60' 
+                        : 'bg-[#0f172a] border-white/5'
+                  }`}
+                >
+                  <span className={`text-[10px] font-black mb-1 ${isToday ? 'text-white' : 'text-slate-500'}`}>
+                    {t.dayLabel} {reward.day}
+                  </span>
+                  <div className={`w-8 h-8 flex items-center justify-center mb-1`}>
+                    {isPast ? (
+                      <CheckCircle2 className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <Coins className={`w-6 h-6 ${isToday ? 'text-yellow-300' : 'text-yellow-500/50'}`} />
+                    )}
+                  </div>
+                  <span className={`text-[8px] font-mono font-black ${isToday ? 'text-white' : 'text-slate-400'}`}>
+                    {reward.amount >= 1000 ? `${reward.amount / 1000}K` : reward.amount}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="bg-[#0f172a] border border-white/5 rounded-[2rem] p-6 mb-8 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-yellow-500/20 rounded-2xl flex items-center justify-center border border-yellow-500/30">
+                <Sparkles className="w-6 h-6 text-yellow-500" />
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{t.streakLabel.replace('{count}', streakData.consecutiveDays)}</p>
+                <p className="text-xl font-black text-white">+{REWARD_SCHEDULE[currentDay - 1].amount.toLocaleString()} <span className="text-yellow-500 text-sm">COINS</span></p>
+              </div>
+            </div>
+            <div className="h-12 w-[1px] bg-white/5"></div>
+            <div className="text-right">
+               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{t.dayLabel} {currentDay}</p>
+               <p className="text-xs font-bold text-blue-400">REWARD</p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={onClaim}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-[2rem] text-xl shadow-xl shadow-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-3 group"
+          >
+            <Zap className="w-6 h-6 group-hover:animate-bounce" />
+            {t.claim}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [uiLang, setUiLang] = useState<'ar' | 'en'>((localStorage.getItem(UI_LANG_KEY) as 'ar' | 'en') || 'ar');
   const t = translations[uiLang];
@@ -437,6 +548,10 @@ const App: React.FC = () => {
 
   const [isDailyCompleted, setIsDailyCompleted] = useState(localStorage.getItem(LAST_DAILY_COMPLETED_KEY) === new Date().toDateString());
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showDailyRewardModal, setShowDailyRewardModal] = useState(false);
+  const [streakData, setStreakData] = useState({ consecutiveDays: 0, lastClaimDate: null as string | null });
+  const [hasClaimedToday, setHasClaimedToday] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardFilter, setLeaderboardFilter] = useState<string>('all');
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -529,6 +644,51 @@ const App: React.FC = () => {
       return () => unsubscribe();
     }
   }, [playerName]);
+
+  useEffect(() => {
+    if (playerName && playerCode !== '000000') {
+      checkDailyReward();
+    }
+  }, [playerName, playerCode]);
+
+  const checkDailyReward = async () => {
+    const data = await getDailyStreak(playerName);
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (data.lastClaimDate === today) {
+      setHasClaimedToday(true);
+      setStreakData({ consecutiveDays: data.consecutiveDays, lastClaimDate: data.lastClaimDate });
+      return;
+    }
+
+    let newStreak = 1;
+    if (data.lastClaimDate) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      
+      if (data.lastClaimDate === yesterdayStr) {
+        newStreak = data.consecutiveDays + 1;
+      }
+    }
+
+    setStreakData({ consecutiveDays: newStreak, lastClaimDate: data.lastClaimDate });
+    setShowDailyRewardModal(true);
+  };
+
+  const handleClaimDailyReward = async () => {
+    const currentDay = (streakData.consecutiveDays % 7) || 7;
+    const reward = REWARD_SCHEDULE[currentDay - 1];
+    const newCoins = totalCoins + reward.amount;
+    
+    await claimDailyReward(playerName, newCoins, streakData.consecutiveDays);
+    setTotalCoins(newCoins);
+    setHasClaimedToday(true);
+    setShowDailyRewardModal(false);
+    
+    // Show a small toast or feedback
+    alert(t.rewardAdded.replace('{amount}', reward.amount.toLocaleString()));
+  };
 
   useEffect(() => {
     if (playerCode !== '000000' && playerName) {
@@ -1047,6 +1207,28 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {showProfile && (
+          <ProfilePage 
+            name={playerName} 
+            playerName={playerName}
+            leaderboard={leaderboard} 
+            playerCode={playerCode} 
+            totalCoins={totalCoins} 
+            t={t} 
+            logout={handleLogout}
+            setViewedProfile={setShowProfile}
+          />
+        )}
+
+        <DailyRewardModal 
+          isOpen={showDailyRewardModal} 
+          onClose={() => setShowDailyRewardModal(false)}
+          t={t}
+          streakData={streakData}
+          onClaim={handleClaimDailyReward}
+          uiLang={uiLang}
+        />
 
         <header className="px-6 pt-10 flex flex-col gap-6 max-w-2xl mx-auto">
           <div className="flex items-center justify-between">

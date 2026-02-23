@@ -5,6 +5,17 @@ export const COINS_KEY = 'code_quest_total_coins_v1';
 export const LEADERBOARD_KEY = 'code_quest_leaderboard_v5';
 export const DAILY_CHALLENGE_KEY = 'code_quest_daily_challenge_date';
 export const DAILY_BONUS_AMOUNT = 25000;
+export const DAILY_REWARDS_KEY = 'code_quest_daily_rewards_v1';
+
+export const REWARD_SCHEDULE = [
+  { day: 1, amount: 5000, type: 'coins' },
+  { day: 2, amount: 10000, type: 'coins' },
+  { day: 3, amount: 15000, type: 'coins' },
+  { day: 4, amount: 25000, type: 'coins' },
+  { day: 5, amount: 40000, type: 'coins' },
+  { day: 6, amount: 60000, type: 'coins' },
+  { day: 7, amount: 100000, type: 'coins' },
+];
 
 export const LANGUAGES: {id: string, name: string}[] = [
   { id: 'javascript', name: 'JAVASCRIPT' },
