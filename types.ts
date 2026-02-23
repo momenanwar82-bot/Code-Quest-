@@ -1,3 +1,4 @@
+
 export enum Difficulty {
   Beginner = 1,
   Intermediate = 2,
@@ -25,8 +26,8 @@ export interface LeaderboardEntry {
 
 export interface GameState {
   currentLanguage: string | null;
-  currentStage: number;
-  currentQuestionIndex: number;
+  currentStage: number; 
+  currentQuestionIndex: number; 
   score: string;
   timeLeft: number;
   isGameOver: boolean;

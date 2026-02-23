@@ -1,7 +1,7 @@
 {
   "name": "code-quest-millionaire",
   "version": "1.0.1",
-  "description": "High-stakes programming quiz",
+  "description": "High-stakes programming quiz game",
   "main": "index.tsx",
   "dependencies": {
     "@capacitor/android": "^6.0.0",
@@ -14,12 +14,17 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
-    "vite": "^5.0.0",
-    "@vitejs/plugin-react": "^4.0.0",
-    "typescript": "^5.0.0"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
   },
   "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "lint": "tsc",
     "sync": "npx cap sync android"
   }
 }
