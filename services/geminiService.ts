@@ -44,10 +44,9 @@ export async function generateProgrammingQuestion(
   
   Return only JSON format.`;
 
-  // Use gemini-3-pro-preview for complex coding and reasoning tasks.
-  // We avoid setting thinkingBudget here to let the model decide the optimal reasoning flow.
+  // Use gemini-3-flash-preview for faster response and higher quota limits.
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: prompt,
     config: {
       responseMimeType: "application/json",

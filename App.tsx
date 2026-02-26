@@ -28,7 +28,9 @@ import {
   onAuthStateChanged,
   signOut,
   getDailyStreak,
-  claimDailyReward
+  claimDailyReward,
+  signInWithPopup,
+  googleProvider
 } from './firebaseConfig';
 import { ref, update, set, onValue, remove, off, runTransaction } from "firebase/database";
 import { 
@@ -183,7 +185,8 @@ const translations = {
     claim: "استلام",
     claimed: "تم الاستلام",
     streakLabel: "ستريك {count} أيام",
-    rewardAdded: "تمت إضافة {amount} قطعة إلى محفظتك!"
+    rewardAdded: "تمت إضافة {amount} قطعة إلى محفظتك!",
+    googleSignIn: "تسجيل الدخول بجوجل"
   },
   en: {
     loginTitle: "Login",
@@ -309,13 +312,20 @@ const translations = {
     claim: "Claim",
     claimed: "Claimed",
     streakLabel: "{count} Day Streak",
-    rewardAdded: "{amount} coins added to your wallet!"
+    rewardAdded: "{amount} coins added to your wallet!",
+    googleSignIn: "Sign in with Google"
   }
 };
 
-const MascotIcon = ({ size = "w-32 h-32", mood = "normal" }) => {
+const MascotIcon = ({ size = "w-32 h-32", mood = "normal", active = false }) => {
   let eyeColor = "bg-yellow-400 shadow-[0_0_15px_#facc15]";
   let mouthColor = "text-yellow-500";
+  let containerClass = `${size} relative mx-auto mb-4 bg-[#1e293b] rounded-[2rem] border-4 border-[#2d3748] shadow-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300`;
+  
+  if (active) {
+    containerClass += " ring-4 ring-blue-500/20 animate-pulse";
+  }
+
   let eyes = (
     <div className="flex gap-4 mt-2">
       <div className={`w-3 h-3 rounded-full ${eyeColor}`}></div>
@@ -326,9 +336,18 @@ const MascotIcon = ({ size = "w-32 h-32", mood = "normal" }) => {
   if (mood === 'angry') { 
     eyeColor = "bg-red-500 shadow-[0_0_15px_#ef4444]"; 
     mouthColor = "text-red-500"; 
-  } else if (mood === 'victory') { 
+  } else if (mood === 'victory' || mood === 'correct') { 
     eyeColor = "bg-green-500 shadow-[0_0_15px_#22c55e]"; 
     mouthColor = "text-green-500"; 
+  } else if (mood === 'wrong') {
+    eyeColor = "bg-red-500 shadow-[0_0_15px_#ef4444]";
+    mouthColor = "text-red-500";
+    eyes = (
+      <div className="flex gap-4 mt-2">
+        <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] flex items-center justify-center text-[8px] font-bold text-white">X</div>
+        <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] flex items-center justify-center text-[8px] font-bold text-white">X</div>
+      </div>
+    );
   } else if (mood === 'upset') {
     eyeColor = "bg-orange-500 shadow-[0_0_15px_#f97316]";
     mouthColor = "text-orange-500";
@@ -341,7 +360,7 @@ const MascotIcon = ({ size = "w-32 h-32", mood = "normal" }) => {
   }
 
   return (
-    <div className={`${size} relative mx-auto mb-4 bg-[#1e293b] rounded-[2rem] border-4 border-[#2d3748] shadow-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300`}>
+    <div className={containerClass}>
       <div className="absolute top-2 left-0 right-0 flex justify-center gap-1">
         <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
         <div className="w-1.5 h-1.5 rounded-full bg-yellow-500"></div>
@@ -538,6 +557,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
 
   const [selectedLangForDifficulty, setSelectedLangForDifficulty] = useState<string | null>(null);
+  const [opponentLastResult, setOpponentLastResult] = useState<'correct' | 'wrong' | null>(null);
   
   // AI Battle State
   const [battleTurn, setBattleTurn] = useState(1);
@@ -595,6 +615,32 @@ const App: React.FC = () => {
   // Fix: Use type assertion for gameMode to avoid unintentional narrowing issues with TypeScript.
   const isMyTurn = (gameMode as string) === 'battle' ? (turnOwner === 'player') : (isMultiplayer ? (multiplayerData?.currentTurn === playerCode) : true);
   const isHost = isMultiplayer && multiplayerData.hostCode === playerCode;
+
+  const opponentAnswersHistory = (gameMode as string) === 'battle' ? aiAnswersHistory : (isMultiplayer ? (isHost ? (multiplayerData?.opponentAnswers || []) : (multiplayerData?.hostAnswers || [])) : []);
+  const opponentName = (gameMode as string) === 'battle' ? t.geminiBot : (isHost ? multiplayerData?.opponentName : multiplayerData?.hostName);
+
+  const playerScore = (gameMode as string) === 'battle' 
+    ? playerBattleAnswers.filter(a => a === true).length 
+    : (isMultiplayer 
+        ? (isHost ? (multiplayerData?.hostAnswers || []) : (multiplayerData?.opponentAnswers || [])).filter((a: any) => a === true).length 
+        : 0);
+
+  const opponentScore = (gameMode as string) === 'battle' 
+    ? aiAnswersHistory.filter(a => a === true).length 
+    : (isMultiplayer 
+        ? (isHost ? (multiplayerData?.opponentAnswers || []) : (multiplayerData?.hostAnswers || [])).filter((a: any) => a === true).length 
+        : 0);
+
+  useEffect(() => {
+    if (opponentAnswersHistory.length > 0) {
+      const lastResult = opponentAnswersHistory[opponentAnswersHistory.length - 1];
+      if (lastResult !== undefined) {
+        setOpponentLastResult(lastResult ? 'correct' : 'wrong');
+        const timer = setTimeout(() => setOpponentLastResult(null), 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [opponentAnswersHistory.length]);
 
   // Intercepting hardware back button
   useEffect(() => {
@@ -692,44 +738,81 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (playerCode !== '000000' && playerName) {
+      // Listen to my own path for incoming challenges
       const myChallengeRef = ref(database, `challenges/${playerCode}`);
-      const unsub = onValue(myChallengeRef, async (snapshot) => {
+      const unsubMyPath = onValue(myChallengeRef, async (snapshot) => {
         const data = snapshot.val();
         if (data && (data.status === 'setup' || data.status === 'lobby') && data.hostCode !== playerCode) {
           setIncomingChallenge(data);
         } else {
           setIncomingChallenge(null);
         }
+        
+        // If I am the opponent (listening to my own path)
         if (data && data.status === 'active' && !isMatchFinished) {
-           setMultiplayerData(data);
-           setActiveChallengePath(playerCode);
-           if (gameMode !== 'friend') {
-             setGameMode('friend');
-             initFriendGameState(data);
-           }
-           const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
-           setFriendProgress({
-             me: myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0),
-             him: myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0)
-           });
-           if (data.questions && data.totalTurns <= MAX_TURNS) {
-             const turnIdx = data.totalTurns - 1;
-             const q = data.questions[turnIdx];
-             if (q) {
-               setCurrentQuestion(q);
-               setIsLoading(false);
-               const itsMyTurnNow = data.currentTurn === playerCode;
-               if (itsMyTurnNow && selectedOption === null) startTimer();
-               else if (!itsMyTurnNow && timerRef.current) window.clearInterval(timerRef.current);
-             }
-           }
-           if (data.totalTurns > MAX_TURNS) handleMultiplayerEnd(data);
-           if (myRole === 'host' && !data.questions && !isPreparingQuestions) prepareMatchQuestions(data);
+          setMultiplayerData(data);
+          setActiveChallengePath(playerCode);
+          if (gameMode !== 'friend') {
+            setGameMode('friend');
+            initFriendGameState(data);
+          }
+          const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
+          setFriendProgress({
+            me: myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0),
+            him: myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0)
+          });
+          if (data.questions && data.totalTurns <= MAX_TURNS) {
+            const turnIdx = data.totalTurns - 1;
+            const q = data.questions[turnIdx];
+            if (q) {
+              setCurrentQuestion(q);
+              setIsLoading(false);
+              const itsMyTurnNow = data.currentTurn === playerCode;
+              if (itsMyTurnNow && selectedOption === null) startTimer();
+              else if (!itsMyTurnNow && timerRef.current) window.clearInterval(timerRef.current);
+            }
+          }
+          if (data.totalTurns > MAX_TURNS) handleMultiplayerEnd(data);
+          if (myRole === 'host' && !data.questions && !isPreparingQuestions) prepareMatchQuestions(data);
         }
       });
-      return () => unsub();
+
+      // If I am the host, I might be listening to the opponent's path
+      let unsubActivePath: (() => void) | null = null;
+      if (activeChallengePath && activeChallengePath !== playerCode) {
+        const activeRef = ref(database, `challenges/${activeChallengePath}`);
+        unsubActivePath = onValue(activeRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data && data.status === 'active' && !isMatchFinished) {
+            setMultiplayerData(data);
+            const myRole = data.hostCode === playerCode ? 'host' : 'opponent';
+            setFriendProgress({
+              me: myRole === 'host' ? (data.hostProgress || 0) : (data.opponentProgress || 0),
+              him: myRole === 'host' ? (data.opponentProgress || 0) : (data.hostProgress || 0)
+            });
+            if (data.questions && data.totalTurns <= MAX_TURNS) {
+              const turnIdx = data.totalTurns - 1;
+              const q = data.questions[turnIdx];
+              if (q) {
+                setCurrentQuestion(q);
+                setIsLoading(false);
+                const itsMyTurnNow = data.currentTurn === playerCode;
+                if (itsMyTurnNow && selectedOption === null) startTimer();
+                else if (!itsMyTurnNow && timerRef.current) window.clearInterval(timerRef.current);
+              }
+            }
+            if (data.totalTurns > MAX_TURNS) handleMultiplayerEnd(data);
+            if (myRole === 'host' && !data.questions && !isPreparingQuestions) prepareMatchQuestions(data);
+          }
+        });
+      }
+
+      return () => {
+        unsubMyPath();
+        if (unsubActivePath) unsubActivePath();
+      };
     }
-  }, [playerCode, playerName, gameMode, selectedOption, isMatchFinished, isPreparingQuestions]);
+  }, [playerCode, playerName, gameMode, selectedOption, isMatchFinished, isPreparingQuestions, activeChallengePath]);
 
   const prepareMatchQuestions = async (data: any) => {
     setIsPreparingQuestions(true);
@@ -821,6 +904,19 @@ const App: React.FC = () => {
         await signInWithEmailAndPassword(auth, formEmail, formPassword);
       }
     } catch (e: any) { setAuthError(e.message); } finally { setIsLoading(false); }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthError('');
+    setIsLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      // Profile is automatically handled by onAuthStateChanged
+    } catch (e: any) {
+      setAuthError(e.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -964,6 +1060,8 @@ const App: React.FC = () => {
       const newAiHistory = [...aiAnswersHistory, isCorrect];
       setAiAnswersHistory(newAiHistory);
       setAiStatus('idle');
+      setOpponentLastResult(isCorrect ? 'correct' : 'wrong');
+      setTimeout(() => setOpponentLastResult(null), 3000);
 
       if (battleTurn < MAX_TURNS) {
         setBattleTurn(prev => prev + 1);
@@ -1136,6 +1234,22 @@ const App: React.FC = () => {
             </div>
             {authError && <p className="text-red-500 text-[10px] font-bold mt-2">{authError}</p>}
             <button type="submit" disabled={isLoading} className="w-full bg-blue-600 py-5 rounded-[2rem] text-xl font-black transition-all hover:bg-blue-500 flex items-center justify-center gap-2 mt-4 active:scale-95 touch-manipulation">{isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : (authMode === 'login' ? <LogIn className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />)}{authMode === 'login' ? t.saveName : t.createAccount}</button>
+            <div className="flex items-center gap-4 my-4">
+              <div className="flex-1 h-[1px] bg-white/10"></div>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">OR</span>
+              <div className="flex-1 h-[1px] bg-white/10"></div>
+            </div>
+            <button type="button" onClick={handleGoogleSignIn} disabled={isLoading} className="w-full bg-blue-600/10 border border-blue-500/30 text-white py-5 rounded-[2rem] text-lg font-black transition-all hover:bg-blue-600/20 flex items-center justify-center gap-3 active:scale-95 touch-manipulation shadow-[0_0_20px_rgba(59,130,246,0.1)]">
+              <div className="bg-white p-1.5 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              </div>
+              {t.googleSignIn}
+            </button>
             <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); }} className="text-sm text-blue-400 font-bold hover:underline block w-full mt-2">{authMode === 'login' ? t.toggleSignup : t.toggleLogin}</button>
           </form>
         </div>
@@ -1320,44 +1434,73 @@ const App: React.FC = () => {
     );
   }
 
-  // Fix: Use type assertion for gameMode to avoid accidental narrowing in logic.
-  const opponentAnswersHistory = (gameMode as string) === 'battle' ? aiAnswersHistory : (isMultiplayer ? (isHost ? (multiplayerData?.opponentAnswers || []) : (multiplayerData?.hostAnswers || [])) : []);
-  const opponentName = (gameMode as string) === 'battle' ? t.geminiBot : (isHost ? multiplayerData?.opponentName : multiplayerData?.hostName);
-
   return (
     <div className={`min-h-screen bg-[#020617] text-white font-['Tajawal'] flex flex-col p-6 overflow-hidden relative`} dir={uiLang === 'ar' ? 'rtl' : 'ltr'}>
        <div className="max-w-2xl mx-auto w-full flex flex-col h-full flex-1 gap-6">
-          <header className="w-full bg-[#0a0f1e]/40 backdrop-blur-xl border border-white/5 p-4 rounded-[2.5rem] flex items-center justify-between flex-shrink-0 shadow-xl">
-             <div className="flex items-center gap-3 flex-1 min-w-0">
-                <UserAvatar name={opponentName} size="w-12 h-12" />
-                <div className="text-right min-w-0">
-                  <span className="text-[10px] text-slate-500 font-black uppercase block leading-none mb-1">{t.opponent}</span>
-                  <span className="text-sm font-black text-white truncate max-w-[80px] block">{opponentName}</span>
-                  {(isMultiplayer || (gameMode as string) === 'battle') && (
-                    <div className="flex gap-1 mt-1">
-                      {[...Array(10)].map((_, i) => {
-                        const res = opponentAnswersHistory[i];
-                        let bgColor = "bg-white/10";
-                        let shadow = "";
-                        if (res === true) { bgColor = "bg-green-500"; shadow = "shadow-[0_0_8px_#22c55e]"; }
-                        else if (res === false) { bgColor = "bg-red-500"; shadow = "shadow-[0_0_8px_#ef4444]"; }
-                        return <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${bgColor} ${shadow}`} />;
-                      })}
-                    </div>
-                  )}
+          <header className="w-full bg-[#050814] border border-white/10 p-4 rounded-[1.5rem] flex items-center justify-between flex-shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden">
+             {/* Left: Timer */}
+             <div className="flex items-center gap-4">
+                <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl border-2 transition-all duration-300 ${gameState.timeLeft < 5 ? 'border-red-500 bg-red-500/10 shadow-[0_0_20px_rgba(239,68,68,0.3)]' : 'border-blue-500/20 bg-blue-500/5'}`}>
+                   <span className="text-[8px] text-slate-500 font-black uppercase tracking-widest mb-0.5">TIME</span>
+                   <span className={`text-3xl font-black font-mono leading-none ${gameState.timeLeft < 5 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                      {gameState.timeLeft.toString().padStart(2, '0')}
+                   </span>
                 </div>
+                <div className="w-[1px] h-10 bg-white/10"></div>
              </div>
-             <div className="text-center flex-1 px-2 border-x border-white/5 min-w-0">
-                <h3 className="font-black text-xs text-blue-400 uppercase leading-tight truncate mb-1">{gameState.currentLanguage}</h3>
-                <div className="flex items-center justify-center gap-1.5">
-                   <span className="text-[10px] text-slate-400 font-black uppercase leading-none">{t.turnCount}</span>
-                   <span className="text-[10px] text-white font-mono font-black leading-none">{(gameMode as string) === 'battle' ? battleTurn : (isMultiplayer ? multiplayerData?.totalTurns : gameState.currentQuestionIndex + 1)}/{MAX_TURNS}</span>
+
+             {/* Right: Stacked Scores and Names */}
+             <div className="flex-1 flex flex-col gap-2 pl-4">
+                {/* Player Row */}
+                <div className="flex items-center justify-between group">
+                   <div className="flex items-center gap-3">
+                      <UserAvatar name={playerName} size="w-8 h-8" />
+                      <span className="text-sm font-black text-white truncate max-w-[120px]">{playerName}</span>
+                   </div>
+                   {gameMode !== 'classic' && (
+                     <div className={`text-2xl font-black font-mono px-3 py-0.5 rounded-lg bg-white/5 border border-white/10 ${playerScore > opponentScore ? 'text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'text-white'}`}>
+                        {playerScore}
+                     </div>
+                   )}
                 </div>
-             </div>
-             <div className="flex-1 flex justify-end">
-                <div className={`relative w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${gameState.timeLeft < 5 ? 'border-red-500 shadow-[0_0_20px_#ef4444] animate-pulse bg-red-500/20' : 'border-blue-500/20 bg-blue-500/5'}`}>
-                   <span className={`text-2xl font-mono font-black ${gameState.timeLeft < 5 ? 'text-red-500' : 'text-white'}`}>{gameState.timeLeft}</span>
-                </div>
+
+                {/* Divider */}
+                <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent"></div>
+
+                {/* Second Row: Conditional based on Game Mode */}
+                {gameMode === 'classic' ? (
+                   <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                         <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                            <Code className="w-4 h-4 text-blue-400" />
+                         </div>
+                         <div className="flex flex-col">
+                            <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest leading-none mb-1">
+                               {LANGUAGES.find(l => l.id === gameState.currentLanguage)?.name || gameState.currentLanguage}
+                            </span>
+                            <span className="text-xs font-black text-white/70 leading-none">
+                               {t.stage} {gameState.currentStage} <span className="text-[10px] text-slate-500 font-bold">/ 15</span>
+                            </span>
+                         </div>
+                      </div>
+                   </div>
+                ) : (
+                   /* Opponent Row (Battle/Friend Mode) */
+                   <div className="flex items-center justify-between group">
+                      <div className="flex items-center gap-3">
+                         <div className="relative">
+                           <UserAvatar name={opponentName || '?'} size="w-8 h-8" />
+                           <div className="absolute -top-1 -right-1">
+                              {(gameMode as string) === 'battle' ? <BrainCircuit className="w-3 h-3 text-purple-400" /> : <Users className="w-3 h-3 text-indigo-400" />}
+                           </div>
+                         </div>
+                         <span className="text-sm font-black text-red-500 truncate max-w-[120px]">{opponentName || '...'}</span>
+                      </div>
+                      <div className={`text-2xl font-black font-mono px-3 py-0.5 rounded-lg bg-white/5 border border-white/10 ${opponentScore > playerScore ? 'text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'text-white'}`}>
+                         {opponentScore}
+                      </div>
+                   </div>
+                )}
              </div>
           </header>
 
@@ -1370,13 +1513,13 @@ const App: React.FC = () => {
             <div className="flex-1 overflow-y-auto no-scrollbar p-6 md:p-8 space-y-6">
               {isLoading || isPreparingQuestions || aiStatus === 'thinking' ? (
                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                    <Loader2 className="w-14 h-14 text-blue-500 animate-spin mx-auto" />
+                    <MascotIcon size="w-32 h-32" mood="normal" active={true} />
                     {isPreparingQuestions && <p className="text-blue-400 font-black animate-pulse">{t.preparingMatch}</p>}
                     {aiStatus === 'thinking' && <p className="text-blue-400 font-black animate-pulse">{t.thinking}</p>}
                  </div>
               ) : !isMyTurn ? (
                 <div className="h-full flex flex-col items-center justify-center gap-8 py-10">
-                  <Hourglass className="w-24 h-24 text-blue-500 animate-bounce" />
+                  <MascotIcon size="w-40 h-40" mood={opponentLastResult || 'normal'} active={!opponentLastResult} />
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black text-blue-400">{t.waitingTurn}</h2>
                     <p className="text-slate-500 font-bold">{t.turnCount}: {(gameMode as string) === 'battle' ? battleTurn : multiplayerData.totalTurns} / {MAX_TURNS}</p>

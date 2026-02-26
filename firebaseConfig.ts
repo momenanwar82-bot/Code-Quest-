@@ -20,7 +20,9 @@ import {
   createUserWithEmailAndPassword, 
   updateProfile,
   onAuthStateChanged,
-  signOut
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup
 } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { UserStreak } from "./types";
@@ -41,6 +43,7 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const database = getDatabase(app);
+export const googleProvider = new GoogleAuthProvider();
 
 const LOCAL_COINS_KEY = 'code_quest_local_coins_fallback';
 
@@ -189,4 +192,4 @@ export const claimDailyReward = async (name: string, newCoins: number, newStreak
   } catch (e) {}
 };
 
-export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut };
+export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, signInWithPopup };
